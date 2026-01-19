@@ -15,8 +15,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.gptbackup.R;
 import com.example.gptbackup.ai.FilePriorityEngine;
 import com.example.gptbackup.adapter.FileAdapter;
-import com.example.gptbackup.backup.DriveBackupManager;
-import com.example.gptbackup.backup.SmartBackupManager;
+import com.example.gptbackup.backup.DriveRestUploader;
 import com.example.gptbackup.model.FileModel;
 import com.example.gptbackup.scanner.FileScanner;
 
@@ -35,7 +34,10 @@ public class MainActivity extends AppCompatActivity {
     private static final int STORAGE_PERMISSION_CODE = 100;
     private static final int RC_SIGN_IN = 101;
 
+    private RecyclerView recyclerView;
+    private FileAdapter fileAdapter;
     private List<FileModel> scannedFiles;
+
     private GoogleSignInClient googleSignInClient;
 
     // ------------------------------------------------------
@@ -45,37 +47,46 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // ✅ Google Sign-In Setup
-        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestEmail()
-                .requestScopes(new Scope("https://www.googleapis.com/auth/drive.file"))
-                .build();
+        recyclerView = findViewById(R.id.recyclerView);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+
+        // ✅ Google Sign-In setup
+        GoogleSignInOptions gso =
+                new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                        .requestEmail()
+                        //.requestIdToken(getString(R.string.server_client_id))
+                        .requestScopes(new Scope("https://www.googleapis.com/auth/drive.file"))
+                        .build();
+
 
         googleSignInClient = GoogleSignIn.getClient(this, gso);
 
-        // ✅ Storage Permission + Scan
+        // ✅ Permission + Scan
         if (checkPermission()) {
             scanFiles();
         } else {
             requestPermission();
         }
 
-        // ✅ Start Smart Backup Button
+        // ✅ Backup button
         findViewById(R.id.btnBackup).setOnClickListener(v -> startSmartBackup());
     }
 
     // ---------------- PERMISSION ----------------
 
     private boolean checkPermission() {
-        return ContextCompat.checkSelfPermission(this,
-                Manifest.permission.READ_EXTERNAL_STORAGE)
-                == PackageManager.PERMISSION_GRANTED;
+        return ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.READ_EXTERNAL_STORAGE
+        ) == PackageManager.PERMISSION_GRANTED;
     }
 
     private void requestPermission() {
-        ActivityCompat.requestPermissions(this,
+        ActivityCompat.requestPermissions(
+                this,
                 new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
-                STORAGE_PERMISSION_CODE);
+                STORAGE_PERMISSION_CODE
+        );
     }
 
     @Override
@@ -84,15 +95,10 @@ public class MainActivity extends AppCompatActivity {
                                            int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-        if (requestCode == STORAGE_PERMISSION_CODE) {
-            if (grantResults.length > 0 &&
-                    grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                scanFiles();
-            } else {
-                Toast.makeText(this,
-                        "Storage permission required",
-                        Toast.LENGTH_LONG).show();
-            }
+        if (requestCode == STORAGE_PERMISSION_CODE &&
+                grantResults.length > 0 &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            scanFiles();
         }
     }
 
@@ -101,28 +107,26 @@ public class MainActivity extends AppCompatActivity {
     private void scanFiles() {
 
         FileScanner scanner = new FileScanner();
-        List<FileModel> files = scanner.scanAllFiles();
-        scannedFiles = files;
+        scannedFiles = scanner.scanAllFiles();
 
-        // ✅ ML Priority
+        // ✅ AI priority
         FilePriorityEngine engine = new FilePriorityEngine(this);
-        engine.assignPriorities(files);
+        engine.assignPriorities(scannedFiles);
 
-        RecyclerView recyclerView = findViewById(R.id.recyclerView);
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        recyclerView.setAdapter(new FileAdapter(files));
+        // ✅ IMPORTANT: assign adapter to field
+        fileAdapter = new FileAdapter(scannedFiles);
+        recyclerView.setAdapter(fileAdapter);
     }
 
     // ---------------- SMART BACKUP ----------------
 
     private void startSmartBackup() {
 
-        if (scannedFiles == null || scannedFiles.isEmpty()) {
-            Toast.makeText(this, "No files to backup", Toast.LENGTH_SHORT).show();
+        if (fileAdapter == null || fileAdapter.getSelectedFiles().isEmpty()) {
+            Toast.makeText(this, "No files selected", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 👉 Start Google Login
         Intent signInIntent = googleSignInClient.getSignInIntent();
         startActivityForResult(signInIntent, RC_SIGN_IN);
     }
@@ -134,34 +138,37 @@ public class MainActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
 
         if (requestCode == RC_SIGN_IN) {
-            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
+            Task<GoogleSignInAccount> task =
+                    GoogleSignIn.getSignedInAccountFromIntent(data);
             try {
                 GoogleSignInAccount account = task.getResult(ApiException.class);
-                startDriveBackup(account);
+
+                if (account != null) {
+                    startBackupAfterLogin(account);
+                } else {
+                    Toast.makeText(this, "Login failed", Toast.LENGTH_SHORT).show();
+                }
+
             } catch (ApiException e) {
-                Toast.makeText(this, "Google Login Failed", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Login failed", Toast.LENGTH_SHORT).show();
             }
         }
     }
 
-    // ---------------- DRIVE BACKUP START ----------------
+    // ---------------- DRIVE UPLOAD ----------------
 
-    private void startDriveBackup(GoogleSignInAccount account) {
+    private void startBackupAfterLogin(GoogleSignInAccount account) {
 
-        SmartBackupManager manager = new SmartBackupManager(this);
+        List<FileModel> backupList = fileAdapter.getSelectedFiles();
 
-        boolean allowLowPriority = true;
-
-        List<FileModel> backupList =
-                manager.selectFilesForBackup(scannedFiles, allowLowPriority);
-
-        DriveBackupManager driveManager =
-                new DriveBackupManager(account, this);
-
-        driveManager.uploadFiles(backupList);
+        DriveRestUploader.uploadFiles(
+                this,
+                account,
+                backupList
+        );
 
         Toast.makeText(this,
-                "Uploading " + backupList.size() + " files to Drive...",
+                "Backup started (" + backupList.size() + " files)",
                 Toast.LENGTH_LONG).show();
     }
 }

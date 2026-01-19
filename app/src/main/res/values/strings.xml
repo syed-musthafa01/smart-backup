@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">GptBackup</string>
+    <string name="server_client_id">176739798584-fco2p68uflc50007e0oj5kdgi90jgd8v.apps.googleusercontent.com</string>
+
 </resources>

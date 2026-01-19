@@ -35,10 +35,7 @@ android {
 
 dependencies {
     implementation("com.google.android.gms:play-services-auth:20.7.0")
-
-    implementation("com.google.api-client:google-api-client-android:1.33.2")
-    implementation("com.google.http-client:google-http-client-gson:1.41.5")
-    implementation("com.google.apis:google-api-services-drive:v3-rev197-1.25.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
 
     implementation(platform("com.google.firebase:firebase-bom:33.6.0"))
