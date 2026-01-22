@@ -1,5 +1,24 @@
 <resources>
-    <string name="app_name">GptBackup</string>
+    <string name="app_name">Smart AI Backup</string>
     <string name="server_client_id">176739798584-fco2p68uflc50007e0oj5kdgi90jgd8v.apps.googleusercontent.com</string>
+
+    <!-- Main UI -->
+    <string name="account_not_signed_in">Not signed in</string>
+    <string name="change">Change</string>
+    <string name="status_wifi_checking">Wi‑Fi: checking…</string>
+    <string name="status_battery_checking">Battery: checking…</string>
+    <string name="status_wifi_ok">Wi‑Fi: OK</string>
+    <string name="status_wifi_off">Wi‑Fi: offline</string>
+    <string name="status_battery_ok">Battery: OK (&gt;30%%)</string>
+    <string name="status_battery_low">Battery: Low (&lt;30%%)</string>
+    <string name="root_path_label">/Internal storage</string>
+    <string name="no_files_selected">No files selected</string>
+    <string name="files_selected">%1$d files selected</string>
+    <string name="start_backup">Backup</string>
+    <string name="pause">Pause</string>
+    <string name="resume">Resume</string>
+    <string name="cancel">Cancel</string>
+    <string name="upload_preparing">Preparing upload…</string>
+    <string name="upload_progress_label">Uploading %1$d of %2$d files…</string>
 
 </resources>

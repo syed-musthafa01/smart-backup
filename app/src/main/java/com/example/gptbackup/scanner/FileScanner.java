@@ -19,6 +19,31 @@ public class FileScanner {
         return fileList;
     }
 
+    /**
+     * Returns direct children of the given folder, used by the file‑manager style UI.
+     */
+    public List<FileModel> listFolder(File folder) {
+        List<FileModel> list = new ArrayList<>();
+        if (folder == null || !folder.exists() || !folder.canRead()) return list;
+
+        File[] children = folder.listFiles();
+        if (children == null) return list;
+
+        for (File file : children) {
+            String name = file.getName();
+            String path = file.getAbsolutePath();
+            long size = file.isDirectory() ? 0L : file.length();
+            String type = getFileType(name);
+
+            FileModel model = new FileModel(name, path, size, type);
+            model.setDirectory(file.isDirectory());
+            model.setLastModified(file.lastModified());
+            model.setCategory(type);
+            list.add(model);
+        }
+        return list;
+    }
+
     private void scanFolder(File folder) {
         if (folder == null || !folder.exists() || !folder.canRead()) return;
 
@@ -34,7 +59,10 @@ public class FileScanner {
                 long size = file.length();
                 String type = getFileType(name);
 
-                fileList.add(new FileModel(name, path, size, type));
+                FileModel model = new FileModel(name, path, size, type);
+                model.setLastModified(file.lastModified());
+                model.setCategory(type);
+                fileList.add(model);
             }
         }
     }
