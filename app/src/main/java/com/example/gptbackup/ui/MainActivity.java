@@ -3,11 +3,9 @@ package com.example.gptbackup.ui;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
-import android.view.View;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -17,7 +15,7 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -26,24 +24,19 @@ import com.example.gptbackup.ai.FilePriorityEngine;
 import com.example.gptbackup.adapter.FileAdapter;
 import com.example.gptbackup.backup.SystemStatusChecker;
 import com.example.gptbackup.backup.UploadManager;
-import com.example.gptbackup.backup.DriveRestUploader;
 import com.example.gptbackup.model.FileModel;
 import com.example.gptbackup.model.UploadState;
 import com.example.gptbackup.scanner.FileScanner;
-
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
-import com.google.android.gms.common.api.Scope;
 import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.common.api.Scope;
 import com.google.android.gms.tasks.Task;
-
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.chip.Chip;
-import com.google.android.gms.common.api.ApiException;
-import com.google.android.gms.tasks.Task;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -60,25 +53,16 @@ public class MainActivity extends AppCompatActivity {
     private File currentFolder;
 
     private GoogleSignInClient googleSignInClient;
+    private GoogleSignInAccount currentAccount;
     private UploadManager uploadManager;
 
-    // UI
-    private TextView txtBreadcrumb;
-    private TextView txtSelectionSummary;
-    private TextView txtGlobalStatus;
+    private TextView txtBreadcrumb, txtSelectionSummary, txtGlobalStatus, txtAccountEmail;
     private ProgressBar progressGlobal;
-    private Chip chipWifi;
-    private Chip chipBattery;
-    private TextView txtAccountEmail;
+    private Chip chipWifi, chipBattery;
     private ImageView imgAccount;
-    private MaterialButton btnPause;
-    private MaterialButton btnResume;
-    private MaterialButton btnCancel;
-    private MaterialButton btnBackup;
+    private MaterialButton btnPause, btnResume, btnCancel, btnBackup;
 
-    private boolean isGrid = false;
-
-    // ------------------------------------------------------
+    private FilePriorityEngine priorityEngine;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -99,11 +83,28 @@ public class MainActivity extends AppCompatActivity {
         chipBattery = findViewById(R.id.chipBattery);
         txtAccountEmail = findViewById(R.id.txtAccountEmail);
         imgAccount = findViewById(R.id.imgAccount);
+
         btnPause = findViewById(R.id.btnPause);
         btnResume = findViewById(R.id.btnResume);
         btnCancel = findViewById(R.id.btnCancel);
         btnBackup = findViewById(R.id.btnBackup);
 
+        priorityEngine = new FilePriorityEngine(this);
+
+        setupUploadButtons();
+        setupGoogleSignIn();
+
+        if (checkPermission()) {
+            openRootFolder();
+        } else {
+            requestPermission();
+        }
+
+        btnBackup.setOnClickListener(v -> startSmartBackup());
+        refreshSystemStatus();
+    }
+
+    private void setupUploadButtons() {
         btnPause.setOnClickListener(v -> {
             if (uploadManager != null) {
                 uploadManager.pause();
@@ -111,6 +112,7 @@ public class MainActivity extends AppCompatActivity {
                 btnResume.setEnabled(true);
             }
         });
+
         btnResume.setOnClickListener(v -> {
             if (uploadManager != null) {
                 uploadManager.resume();
@@ -118,6 +120,7 @@ public class MainActivity extends AppCompatActivity {
                 btnResume.setEnabled(false);
             }
         });
+
         btnCancel.setOnClickListener(v -> {
             if (uploadManager != null) {
                 uploadManager.cancel();
@@ -126,49 +129,23 @@ public class MainActivity extends AppCompatActivity {
                 btnCancel.setEnabled(false);
             }
         });
+    }
 
-        // ✅ Google Sign-In setup
+    private void setupGoogleSignIn() {
         GoogleSignInOptions gso =
                 new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                         .requestEmail()
-                        //.requestIdToken(getString(R.string.server_client_id))
                         .requestScopes(new Scope("https://www.googleapis.com/auth/drive.file"))
                         .build();
 
-
         googleSignInClient = GoogleSignIn.getClient(this, gso);
-
-        // Show last signed in account if any
-        GoogleSignInAccount lastAccount = GoogleSignIn.getLastSignedInAccount(this);
-        updateAccountUi(lastAccount);
-
-        // Change account
-        findViewById(R.id.btnChangeAccount).setOnClickListener(v -> {
-            googleSignInClient.signOut().addOnCompleteListener(task -> {
-                startActivityForResult(googleSignInClient.getSignInIntent(), RC_SIGN_IN);
-            });
-        });
-
-        // ✅ Permission + initial folder
-        if (checkPermission()) {
-            openRootFolder();
-        } else {
-            requestPermission();
-        }
-
-        // ✅ Backup button
-        btnBackup.setOnClickListener(v -> startSmartBackup());
-
-        // System status on launch
-        refreshSystemStatus();
+        currentAccount = GoogleSignIn.getLastSignedInAccount(this);
+        updateAccountUi(currentAccount);
     }
-
-    // ---------------- PERMISSION ----------------
 
     private boolean checkPermission() {
         return ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.READ_EXTERNAL_STORAGE
+                this, Manifest.permission.READ_EXTERNAL_STORAGE
         ) == PackageManager.PERMISSION_GRANTED;
     }
 
@@ -182,8 +159,8 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onRequestPermissionsResult(int requestCode,
-                                           String[] permissions,
-                                           int[] grantResults) {
+                                           @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
         if (requestCode == STORAGE_PERMISSION_CODE &&
@@ -193,23 +170,24 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ---------------- FILE BROWSER + ML ----------------
-
     private void openRootFolder() {
-        currentFolder = Environment.getExternalStorageDirectory();
-        loadFolder(currentFolder);
+        loadFolder(Environment.getExternalStorageDirectory());
     }
 
     private void loadFolder(File folder) {
+        if (folder == null || !folder.exists() || !folder.canRead()) {
+            Toast.makeText(this, "Cannot open folder", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         currentFolder = folder;
         txtBreadcrumb.setText(folder.getAbsolutePath());
 
         FileScanner scanner = new FileScanner();
         currentFiles = scanner.listFolder(folder);
 
-        // AI priority for visible files
-        FilePriorityEngine engine = new FilePriorityEngine(this);
-        engine.assignPriorities(currentFiles);
+        // ✅ FIXED CALL
+        priorityEngine.assignPriorities(currentFiles, this);
 
         fileAdapter = new FileAdapter(currentFiles);
         fileAdapter.setOnFileClickListener(new FileAdapter.OnFileClickListener() {
@@ -217,37 +195,65 @@ public class MainActivity extends AppCompatActivity {
             public void onFileClicked(FileModel file) {
                 if (file.isDirectory()) {
                     loadFolder(new File(file.getPath()));
+                } else {
+                    openFile(file);
                 }
             }
 
             @Override
-            public void onSelectionChanged(int selectedCount) {
+            public void onSelectionChanged(int count) {
                 txtSelectionSummary.setText(
-                        selectedCount == 0
+                        count == 0
                                 ? getString(R.string.no_files_selected)
-                                : getString(R.string.files_selected, selectedCount)
+                                : getString(R.string.files_selected, count)
                 );
             }
         });
+
         recyclerView.setAdapter(fileAdapter);
     }
 
-    // ---------------- SMART BACKUP ----------------
+    @Override
+    public void onBackPressed() {
+        if (currentFolder != null && currentFolder.getParentFile() != null) {
+            loadFolder(currentFolder.getParentFile());
+        } else {
+            super.onBackPressed();
+        }
+    }
+
+    private void openFile(FileModel model) {
+        File file = new File(model.getPath());
+        Uri uri = FileProvider.getUriForFile(
+                this, getPackageName() + ".provider", file
+        );
+
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(uri, "*/*");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+        try {
+            startActivity(Intent.createChooser(intent, "Open with"));
+        } catch (Exception e) {
+            Toast.makeText(this, "No app found", Toast.LENGTH_SHORT).show();
+        }
+    }
 
     private void startSmartBackup() {
-
-        refreshSystemStatus();
-
         if (fileAdapter == null || fileAdapter.getSelectedFiles().isEmpty()) {
             Toast.makeText(this, "No files selected", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        Intent signInIntent = googleSignInClient.getSignInIntent();
-        startActivityForResult(signInIntent, RC_SIGN_IN);
+        if (currentAccount != null) {
+            startBackupAfterLogin(currentAccount);
+        } else {
+            startActivityForResult(
+                    googleSignInClient.getSignInIntent(),
+                    RC_SIGN_IN
+            );
+        }
     }
-
-    // ---------------- GOOGLE LOGIN RESULT ----------------
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -257,126 +263,31 @@ public class MainActivity extends AppCompatActivity {
             Task<GoogleSignInAccount> task =
                     GoogleSignIn.getSignedInAccountFromIntent(data);
             try {
-                GoogleSignInAccount account = task.getResult(ApiException.class);
-
-                if (account != null) {
-                    startBackupAfterLogin(account);
-                } else {
-                    Toast.makeText(this, "Login failed", Toast.LENGTH_SHORT).show();
-                }
-
-            } catch (ApiException e) {
-                Toast.makeText(this, "Login failed", Toast.LENGTH_SHORT).show();
-            }
+                currentAccount = task.getResult(ApiException.class);
+                updateAccountUi(currentAccount);
+                startBackupAfterLogin(currentAccount);
+            } catch (ApiException ignored) {}
         }
     }
 
-    // ---------------- DRIVE UPLOAD + MANAGER ----------------
-
     private void startBackupAfterLogin(GoogleSignInAccount account) {
-
         List<FileModel> backupList = fileAdapter.getSelectedFiles();
 
-        if (backupList.isEmpty()) {
-            Toast.makeText(this, "No files selected", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        // Reset upload state
         for (FileModel f : backupList) {
             f.setUploadState(UploadState.WAITING);
             f.setUploadProgress(0);
         }
 
-        uploadManager = new UploadManager(
-                this,
-                account,
-                backupList,
-                new UploadManager.Listener() {
-                    @Override
-                    public void onFileProgress(FileModel file, int progress) {
-                        progressGlobal.setIndeterminate(false);
-                        progressGlobal.setProgress(progress);
-                        recyclerView.getAdapter().notifyDataSetChanged();
-                    }
-
-                    @Override
-                    public void onFileStateChanged(FileModel file, UploadState state) {
-                        recyclerView.getAdapter().notifyDataSetChanged();
-                    }
-
-                    @Override
-                    public void onGlobalProgress(int completed, int total) {
-                        txtGlobalStatus.setText(getString(
-                                R.string.upload_progress_label,
-                                completed,
-                                total
-                        ));
-                    }
-
-                    @Override
-                    public void onCompleted() {
-                        btnPause.setEnabled(false);
-                        btnResume.setEnabled(false);
-                        btnCancel.setEnabled(false);
-                        Toast.makeText(MainActivity.this,
-                                "Backup completed", Toast.LENGTH_LONG).show();
-                    }
-                }
-        );
-
-        findViewById(R.id.layoutGlobalProgress).setVisibility(View.VISIBLE);
-        progressGlobal.setIndeterminate(true);
-        btnPause.setEnabled(true);
-        btnResume.setEnabled(false);
-        btnCancel.setEnabled(true);
-
+        uploadManager = new UploadManager(this, account, backupList, null);
         uploadManager.start();
-
-        Toast.makeText(this,
-                "Backup started (" + backupList.size() + " files)",
-                Toast.LENGTH_LONG).show();
     }
-
-    // --------------- MENU (LIST / GRID TOGGLE) ---------------
-
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        getMenuInflater().inflate(R.menu.menu_main, menu);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        int id = item.getItemId();
-        if (id == R.id.action_toggle_layout) {
-            toggleLayout();
-            return true;
-        }
-        return super.onOptionsItemSelected(item);
-    }
-
-    private void toggleLayout() {
-        isGrid = !isGrid;
-        if (isGrid) {
-            recyclerView.setLayoutManager(new GridLayoutManager(this, 2));
-        } else {
-            recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        }
-    }
-
-    // --------------- SYSTEM STATUS + ACCOUNT UI ---------------
 
     private void refreshSystemStatus() {
         SystemStatusChecker checker = new SystemStatusChecker(this);
-        boolean wifi = checker.isWifiConnected();
-        boolean batteryOk = checker.isBatteryOkay();
-
-        chipWifi.setText(wifi
+        chipWifi.setText(checker.isWifiConnected()
                 ? getString(R.string.status_wifi_ok)
                 : getString(R.string.status_wifi_off));
-
-        chipBattery.setText(batteryOk
+        chipBattery.setText(checker.isBatteryOkay()
                 ? getString(R.string.status_battery_ok)
                 : getString(R.string.status_battery_low));
     }

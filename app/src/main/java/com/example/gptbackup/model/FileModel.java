@@ -5,82 +5,85 @@ public class FileModel {
     private String name;
     private String path;
     private long size;
+
+    // logical category: image / video / audio / document / other
     private String type;
-    private int priority; // 0=Low, 1=Medium, 2=High
-    private long lastModified;
+
     private boolean isDirectory;
+    private long lastModified;
+    private int accessCount;
 
-    // Category helps us route to a specific Drive folder (Images, Videos, Documents, Audio, AI_Priority)
-    private String category;
+    private int priority = -1;
 
-    // Upload UI state
-    private UploadState uploadState = UploadState.WAITING;
-    private int uploadProgress = 0; // 0-100
+    private UploadState uploadState = UploadState.IDLE;
+    private int uploadProgress = 0;
 
-    private boolean isBackedUp = false;
-
-    public boolean isBackedUp() {
-        return isBackedUp;
-    }
-
-    public void setBackedUp(boolean backedUp) {
-        isBackedUp = backedUp;
-    }
+    // ---------------- CONSTRUCTOR ----------------
     public FileModel(String name, String path, long size, String type) {
         this.name = name;
         this.path = path;
         this.size = size;
         this.type = type;
-        this.priority = -1; // not assigned yet
-        this.category = type;
-        this.lastModified = 0L;
-        this.isDirectory = false;
     }
 
+    // ---------------- BASIC GETTERS ----------------
     public String getName() { return name; }
     public String getPath() { return path; }
     public long getSize() { return size; }
+
+    // 🔴 FIX for DriveRestUploader
     public String getType() { return type; }
 
-    public int getPriority() { return priority; }
-    public void setPriority(int priority) { this.priority = priority; }
+    public void setCategory(String type) { this.type = type; }
 
-    public long getLastModified() {
-        return lastModified;
+    // ---------------- DIRECTORY ----------------
+    public boolean isDirectory() { return isDirectory; }
+    public void setDirectory(boolean directory) { isDirectory = directory; }
+
+    // ---------------- FILE TYPE HELPERS ----------------
+    public boolean isImage() { return "image".equals(type); }
+    public boolean isVideo() { return "video".equals(type); }
+
+    // 🔴 FIX for FeatureExtractor
+    public boolean isAudio() { return "audio".equals(type); }
+
+    public boolean isDocument() { return "document".equals(type); }
+
+    // 🔴 FIX for FileAdapter
+    public String getExtension() {
+        if (name == null || !name.contains(".")) return "";
+        return name.substring(name.lastIndexOf('.') + 1);
     }
 
+    // ---------------- TIME & USAGE ----------------
     public void setLastModified(long lastModified) {
         this.lastModified = lastModified;
     }
 
-    public boolean isDirectory() {
-        return isDirectory;
+    public int getLastModifiedDays() {
+        long diff = System.currentTimeMillis() - lastModified;
+        return (int) (diff / (1000L * 60 * 60 * 24));
     }
 
-    public void setDirectory(boolean directory) {
-        isDirectory = directory;
+    public int getAccessCount() {
+        return accessCount;
     }
 
-    public String getCategory() {
-        return category;
+    public void incrementAccessCount() {
+        accessCount++;
     }
 
-    public void setCategory(String category) {
-        this.category = category;
-    }
+    // ---------------- PRIORITY ----------------
+    public int getPriority() { return priority; }
+    public void setPriority(int priority) { this.priority = priority; }
 
-    public UploadState getUploadState() {
-        return uploadState;
-    }
-
+    // ---------------- UPLOAD STATE ----------------
+    public UploadState getUploadState() { return uploadState; }
     public void setUploadState(UploadState uploadState) {
         this.uploadState = uploadState;
     }
 
-    public int getUploadProgress() {
-        return uploadProgress;
-    }
-
+    public int getUploadProgress() { return uploadProgress; }
     public void setUploadProgress(int uploadProgress) {
         this.uploadProgress = uploadProgress;
     }

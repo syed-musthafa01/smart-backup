@@ -1,6 +1,5 @@
 package com.example.gptbackup.ai;
 
-
 import com.example.gptbackup.model.FileModel;
 
 public class FeatureExtractor {
@@ -9,17 +8,17 @@ public class FeatureExtractor {
 
         float sizeMB = file.getSize() / (1024f * 1024f);
 
-        float typeImage = file.getType().equals("image") ? 1f : 0f;
-        float typeVideo = file.getType().equals("video") ? 1f : 0f;
-        float typeAudio = file.getType().equals("audio") ? 1f : 0f;
-        float typeDoc = file.getType().equals("document") ? 1f : 0f;
+        float image = file.isImage() ? 1f : 0f;
+        float video = file.isVideo() ? 1f : 0f;
+        float audio = file.isAudio() ? 1f : 0f;
+        float doc = file.isDocument() ? 1f : 0f;
 
         return new float[]{
                 sizeMB,
-                typeImage,
-                typeVideo,
-                typeAudio,
-                typeDoc
+                image,
+                video,
+                audio,
+                doc
         };
     }
 }
