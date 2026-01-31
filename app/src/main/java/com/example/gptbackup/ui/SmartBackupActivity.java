@@ -26,6 +26,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SmartBackupActivity extends AppCompatActivity {
+    private TextView txtProgress;
+    private MaterialButton btnPause, btnResume, btnCancel, btnBackupHigh;
+
+    private final List<FileModel> selectedFiles = new ArrayList<>();
+    private int backupIndex = 0;
+    private boolean isPaused = false;
+    private boolean isCancelled = false;
+
+    private final android.os.Handler handler = new android.os.Handler();
+
 
     private static final int RC_SIGN_IN = 101;
 
@@ -48,6 +58,31 @@ public class SmartBackupActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_smart_backup);
 
+        txtProgress = findViewById(R.id.txtProgress);
+        btnPause = findViewById(R.id.btnPause);
+        btnResume = findViewById(R.id.btnResume);
+        btnCancel = findViewById(R.id.btnCancel);
+        btnBackupHigh = findViewById(R.id.btnBackupHigh);
+
+        btnBackupHigh.setOnClickListener(v -> startBackup());
+
+        btnPause.setOnClickListener(v -> {
+            isPaused = true;
+            txtProgress.setText("Backup paused");
+        });
+
+        btnResume.setOnClickListener(v -> {
+            isPaused = false;
+            txtProgress.setText("Resuming backup...");
+            processNextFile();
+        });
+
+        btnCancel.setOnClickListener(v -> {
+            isCancelled = true;
+            handler.removeCallbacksAndMessages(null);
+            resetBackupUI();
+        });
+
         // 🔹 Account UI
         txtAccountStatus = findViewById(R.id.txtAccountStatus);
         btnChangeAccount = findViewById(R.id.btnChangeAccount);
@@ -61,11 +96,16 @@ public class SmartBackupActivity extends AppCompatActivity {
         updateAccountUI();
 
         btnChangeAccount.setOnClickListener(v -> {
-            startActivityForResult(
-                    googleSignInClient.getSignInIntent(),
-                    RC_SIGN_IN
-            );
+
+            googleSignInClient.signOut().addOnCompleteListener(task -> {
+                startActivityForResult(
+                        googleSignInClient.getSignInIntent(),
+                        RC_SIGN_IN
+                );
+            });
+
         });
+
 
         // 🔹 File Manager
         ImageButton btnOpenFileManager = findViewById(R.id.btnOpenFileManager);
@@ -135,7 +175,7 @@ public class SmartBackupActivity extends AppCompatActivity {
 
         for (FileModel file : scannedFiles) {
             if (!file.isDirectory()) {
-                file.setSelected(true); // ✅ default checked
+                file.setSelected(false); // ✅ default checked
                 allSmartFiles.add(file);
                 if (allSmartFiles.size() >= 200) break;
             }
@@ -200,4 +240,63 @@ public class SmartBackupActivity extends AppCompatActivity {
         chipLow.setChecked(false);
         selected.setChecked(true);
     }
+    private void startBackup() {
+
+        selectedFiles.clear();
+        backupIndex = 0;
+        isPaused = false;
+        isCancelled = false;
+
+        // 🔹 Collect only checked files
+        for (FileModel file : allSmartFiles) {
+            if (file.isSelected()) {
+                selectedFiles.add(file);
+            }
+        }
+
+        if (selectedFiles.isEmpty()) {
+            txtProgress.setText("No files selected for backup");
+            return;
+        }
+
+        // 🔹 Enable controls
+        btnPause.setEnabled(true);
+        btnResume.setEnabled(false);
+        btnCancel.setEnabled(true);
+
+        txtProgress.setText("Starting backup...");
+        processNextFile();
+    }
+
+
+    private void processNextFile() {
+
+        if (isCancelled) return;
+        if (isPaused) return;
+
+        if (backupIndex >= selectedFiles.size()) {
+            txtProgress.setText("Backup completed (" + selectedFiles.size() + " files)");
+            resetBackupUI();
+            return;
+        }
+
+        FileModel file = selectedFiles.get(backupIndex);
+
+        txtProgress.setText(
+                "Backing up: " + file.getName() +
+                        " (" + (backupIndex + 1) + "/" + selectedFiles.size() + ")"
+        );
+
+        // 🔹 Simulate backup delay (safe)
+        handler.postDelayed(() -> {
+            backupIndex++;
+            processNextFile();
+        }, 700); // 0.7 sec per file
+    }
+    private void resetBackupUI() {
+        btnPause.setEnabled(false);
+        btnResume.setEnabled(true);
+        btnCancel.setEnabled(false);
+    }
+
 }

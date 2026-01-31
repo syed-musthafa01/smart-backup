@@ -64,7 +64,7 @@ public class MainActivity extends AppCompatActivity {
     private MaterialButton btnPause, btnResume, btnCancel, btnBackup;
     private MaterialButton btnOpenSmart;
 
-    private FilePriorityEngine priorityEngine;
+    private FilePriorityEngine priorityEngine;  
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
