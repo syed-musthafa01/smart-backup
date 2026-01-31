@@ -50,32 +50,35 @@ public class SmartFileAdapter
         FileModel file = files.get(position);
         Context context = holder.itemView.getContext();
 
-        holder.txtFileName.setText(file.getName());
-        holder.txtPriority.setText(getPriorityText(file.getPriority()));
+        // -------- TEXT --------
+        holder.txtName.setText(file.getName());
+        holder.txtInfo.setText(getPriorityText(file.getPriority()));
 
         File realFile = new File(file.getPath());
 
-        // 🔹 Preview or icon
-        if (realFile.exists() && !file.isDirectory()
+        // -------- PREVIEW / ICON --------
+        if (realFile.exists()
+                && !file.isDirectory()
                 && (file.isImage() || file.isVideo())) {
 
             Glide.with(context)
                     .load(realFile)
                     .centerCrop()
-                    .placeholder(R.drawable.ic_file)
-                    .into(holder.imgFileIcon);
+                    .placeholder(R.drawable.ic_file_generic)
+                    .into(holder.imgPreview);
+
         } else {
-            holder.imgFileIcon.setImageResource(getFileIcon(file));
+            holder.imgPreview.setImageResource(getFileIcon(file));
         }
 
-        // 🔹 Checkbox (default checked)
+        // -------- CHECKBOX --------
         holder.checkSelect.setOnCheckedChangeListener(null);
         holder.checkSelect.setChecked(file.isSelected());
         holder.checkSelect.setOnCheckedChangeListener(
                 (buttonView, isChecked) -> file.setSelected(isChecked)
         );
 
-        // 🔹 OPEN FILE ON CLICK
+        // -------- OPEN FILE --------
         holder.itemView.setOnClickListener(v ->
                 openFileExternally(context, realFile)
         );
@@ -86,7 +89,7 @@ public class SmartFileAdapter
         return files.size();
     }
 
-    // ---------------- FILE OPEN LOGIC ----------------
+    // ================= FILE OPEN =================
 
     private void openFileExternally(Context context, File file) {
 
@@ -112,9 +115,11 @@ public class SmartFileAdapter
             context.startActivity(Intent.createChooser(intent, "Open with"));
 
         } catch (Exception e) {
-            Toast.makeText(context,
+            Toast.makeText(
+                    context,
                     "No app found to open this file",
-                    Toast.LENGTH_SHORT).show();
+                    Toast.LENGTH_SHORT
+            ).show();
         }
     }
 
@@ -125,12 +130,12 @@ public class SmartFileAdapter
                 .getMimeTypeFromExtension(ext.toLowerCase());
     }
 
-    // ---------------- HELPERS ----------------
+    // ================= HELPERS =================
 
     private String getPriorityText(int priority) {
-        if (priority >= 70) return "HIGH";
-        if (priority >= 40) return "MEDIUM";
-        return "LOW";
+        if (priority >= 70) return "Priority: HIGH";
+        if (priority >= 40) return "Priority: MEDIUM";
+        return "Priority: LOW";
     }
 
     private int getFileIcon(FileModel file) {
@@ -138,22 +143,23 @@ public class SmartFileAdapter
         if (file.isAudio()) return R.drawable.ic_audio;
         if (file.isVideo()) return R.drawable.ic_video;
         if (file.isDocument()) return R.drawable.ic_document;
-        return R.drawable.ic_file;
+        return R.drawable.ic_file_generic;
     }
 
-    // ---------------- VIEW HOLDER ----------------
+    // ================= VIEW HOLDER =================
 
     static class ViewHolder extends RecyclerView.ViewHolder {
 
-        ImageView imgFileIcon;
-        TextView txtFileName, txtPriority;
+        ImageView imgPreview;
+        TextView txtName, txtInfo;
         CheckBox checkSelect;
 
         ViewHolder(@NonNull View itemView) {
             super(itemView);
-            imgFileIcon = itemView.findViewById(R.id.imgFileIcon);
-            txtFileName = itemView.findViewById(R.id.txtFileName);
-            txtPriority = itemView.findViewById(R.id.txtPriority);
+
+            imgPreview = itemView.findViewById(R.id.imgPreview);
+            txtName = itemView.findViewById(R.id.txtName);
+            txtInfo = itemView.findViewById(R.id.txtInfo);
             checkSelect = itemView.findViewById(R.id.checkSelect);
         }
     }

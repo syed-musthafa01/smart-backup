@@ -1,142 +1,199 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
-    android:background="@android:color/black">
+    android:background="#0F1115">
 
-    <!-- 🔹 Top Bar -->
+    <!-- ================= MAIN SMART UI ================= -->
+
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="16dp">
 
+        <!-- HEADER -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <ImageButton
+                android:id="@+id/btnOpenFileManager"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_folder"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:tint="@android:color/white" />
+
+            <TextView
+                android:id="@+id/txtAccountStatus"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Not signed in"
+                android:textColor="@android:color/white"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnChangeAccount"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="SIGN IN"
+                app:backgroundTint="#7C4DFF" />
+        </LinearLayout>
+
+        <!-- CHIPS -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:orientation="horizontal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipHigh"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="High"
+                    app:chipBackgroundColor="@android:color/darker_gray" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipMedium"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="Medium"
+                    android:layout_marginStart="8dp"
+                    app:chipBackgroundColor="@android:color/darker_gray" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipLow"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="Low"
+                    android:layout_marginStart="8dp"
+                    app:chipBackgroundColor="@android:color/darker_gray" />
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <!-- STATUS -->
         <TextView
-            android:id="@+id/txtAccountStatus"
-            android:layout_width="0dp"
+            android:id="@+id/txtProgress"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Not signed in"
+            android:text="Idle"
             android:textColor="@android:color/white"
-            android:textSize="14sp" />
+            android:layout_marginTop="8dp" />
 
+        <!-- FILE LIST -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerSmart"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="8dp" />
+
+        <!-- START BUTTON -->
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnChangeAccount"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="SIGN IN" />
-
-        <ImageButton
-            android:id="@+id/btnOpenFileManager"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginStart="8dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_menu_manage"
-            android:tint="@android:color/white" />
+            android:id="@+id/btnBackupHigh"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="START BACKUP"
+            android:layout_marginTop="8dp"
+            app:backgroundTint="#7C4DFF" />
     </LinearLayout>
 
-    <!-- 🔹 Title -->
-    <TextView
-        android:id="@+id/txtAiSummary"
+    <!-- ================= UPLOAD POPUP OVERLAY ================= -->
+
+    <FrameLayout
+        android:id="@+id/uploadOverlay"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="AI Backup Summary"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:textColor="@android:color/white"
-        android:paddingTop="12dp"
-        android:paddingBottom="8dp" />
+        android:layout_height="match_parent"
+        android:background="#99000000"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true">
 
-    <!-- 🔹 Chips -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:orientation="horizontal">
-
-        <com.google.android.material.chip.Chip
-            android:id="@+id/chipHigh"
-            android:layout_width="wrap_content"
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="High"
-            app:chipStrokeWidth="1dp"
-            app:chipBackgroundColor="@android:color/darker_gray" />
+            android:layout_gravity="center"
+            android:layout_margin="24dp"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="12dp">
 
-        <com.google.android.material.chip.Chip
-            android:id="@+id/chipMedium"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Medium"
-            app:chipStrokeWidth="1dp"
-            app:chipBackgroundColor="@android:color/darker_gray" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
 
-        <com.google.android.material.chip.Chip
-            android:id="@+id/chipLow"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Low"
-            app:chipStrokeWidth="1dp"
-            app:chipBackgroundColor="@android:color/darker_gray" />
-    </LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Uploading..."
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
 
-    <!-- 🔹 File List -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recyclerSmart"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:paddingTop="8dp" />
+                <ProgressBar
+                    android:id="@+id/progressUpload"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="6dp"
+                    android:layout_marginTop="12dp"
+                    android:max="100" />
 
-    <!-- 🔹 Backup Button -->
-    <!-- 🔹 Progress -->
-    <TextView
-        android:id="@+id/txtProgress"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Waiting to start backup"
-        android:textColor="@android:color/white"
-        android:padding="6dp" />
+                <TextView
+                    android:id="@+id/txtUploadInfo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="0% • 0 KB/s" />
 
-    <!-- 🔹 Controls -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:layout_marginTop="16dp">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnPause"
-            android:text="PAUSE"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:enabled="false" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnPause"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Pause" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnResume"
-            android:text="RESUME"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:enabled="false"
-            android:layout_marginStart="8dp" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnResume"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Resume"
+                        android:layout_marginStart="8dp" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnCancel"
-            android:text="CANCEL"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:enabled="false" />
-    </LinearLayout>
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCancel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="✕"
+                        android:layout_marginStart="8dp" />
+                </LinearLayout>
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnBackupHigh"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Start Backup" />
+                <TextView
+                    android:id="@+id/txtFileCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="0 / 0 files uploaded" />
+            </LinearLayout>
 
+        </com.google.android.material.card.MaterialCardView>
+    </FrameLayout>
 
-</LinearLayout>
+</FrameLayout>

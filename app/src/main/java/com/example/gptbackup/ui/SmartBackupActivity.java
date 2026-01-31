@@ -1,9 +1,9 @@
 package com.example.gptbackup.ui;
 
 import android.content.Intent;
-import android.net.Uri;
 import android.os.Bundle;
-import android.widget.ImageButton;
+import android.view.View;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -14,219 +14,160 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.gptbackup.R;
 import com.example.gptbackup.adapter.SmartFileAdapter;
 import com.example.gptbackup.ai.FilePriorityEngine;
+import com.example.gptbackup.backup.UploadManager;
 import com.example.gptbackup.model.FileModel;
+import com.example.gptbackup.model.UploadState;
 import com.example.gptbackup.scanner.FileScanner;
-import com.google.android.gms.auth.api.signin.*;
-import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.chip.Chip;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-public class SmartBackupActivity extends AppCompatActivity {
-    private TextView txtProgress;
-    private MaterialButton btnPause, btnResume, btnCancel, btnBackupHigh;
-
-    private final List<FileModel> selectedFiles = new ArrayList<>();
-    private int backupIndex = 0;
-    private boolean isPaused = false;
-    private boolean isCancelled = false;
-
-    private final android.os.Handler handler = new android.os.Handler();
-
+public class SmartBackupActivity extends AppCompatActivity
+        implements UploadManager.Listener {
 
     private static final int RC_SIGN_IN = 101;
 
+    // Main UI
+    private TextView txtProgress, txtAccountStatus;
     private RecyclerView recyclerSmart;
+    private MaterialButton btnBackup, btnChangeAccount;
+    private Chip chipHigh, chipMedium, chipLow;
+
+    // Popup UI
+    private View uploadOverlay;
+    private ProgressBar progressUpload;
+    private TextView txtUploadInfo, txtFileCount;
+    private MaterialButton btnPause, btnResume, btnCancel;
+
+    // Data
+    private final List<FileModel> allFiles = new ArrayList<>();
+    private final List<FileModel> filteredFiles = new ArrayList<>();
     private SmartFileAdapter adapter;
 
-    private Chip chipHigh, chipMedium, chipLow;
-    private FilePriorityEngine priorityEngine;
-
-    private final List<FileModel> allSmartFiles = new ArrayList<>();
-    private final List<FileModel> filteredFiles = new ArrayList<>();
-
-    // 🔹 Account
+    // Backup
+    private UploadManager uploadManager;
     private GoogleSignInClient googleSignInClient;
-    private TextView txtAccountStatus;
-    private MaterialButton btnChangeAccount;
+    private GoogleSignInAccount currentAccount;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_smart_backup);
 
-        txtProgress = findViewById(R.id.txtProgress);
-        btnPause = findViewById(R.id.btnPause);
-        btnResume = findViewById(R.id.btnResume);
-        btnCancel = findViewById(R.id.btnCancel);
-        btnBackupHigh = findViewById(R.id.btnBackupHigh);
+        bindViews();
+        setupGoogle();
+        setupRecycler();
+        setupChips();
+        loadFilesAsync();
 
-        btnBackupHigh.setOnClickListener(v -> startBackup());
+        btnBackup.setOnClickListener(v -> startBackup());
 
         btnPause.setOnClickListener(v -> {
-            isPaused = true;
-            txtProgress.setText("Backup paused");
+            if (uploadManager != null) uploadManager.pause();
         });
 
         btnResume.setOnClickListener(v -> {
-            isPaused = false;
-            txtProgress.setText("Resuming backup...");
-            processNextFile();
+            if (uploadManager != null) uploadManager.resume();
         });
 
         btnCancel.setOnClickListener(v -> {
-            isCancelled = true;
-            handler.removeCallbacksAndMessages(null);
-            resetBackupUI();
+            if (uploadManager != null) uploadManager.cancel();
+            hideOverlay();
         });
 
-        // 🔹 Account UI
+        findViewById(R.id.btnOpenFileManager)
+                .setOnClickListener(v ->
+                        startActivity(new Intent(this, MainActivity.class)));
+    }
+
+    private void bindViews() {
+        txtProgress = findViewById(R.id.txtProgress);
         txtAccountStatus = findViewById(R.id.txtAccountStatus);
-        btnChangeAccount = findViewById(R.id.btnChangeAccount);
-
-        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(
-                GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestEmail()
-                .build();
-
-        googleSignInClient = GoogleSignIn.getClient(this, gso);
-        updateAccountUI();
-
-        btnChangeAccount.setOnClickListener(v -> {
-
-            googleSignInClient.signOut().addOnCompleteListener(task -> {
-                startActivityForResult(
-                        googleSignInClient.getSignInIntent(),
-                        RC_SIGN_IN
-                );
-            });
-
-        });
-
-
-        // 🔹 File Manager
-        ImageButton btnOpenFileManager = findViewById(R.id.btnOpenFileManager);
-        btnOpenFileManager.setOnClickListener(v ->
-                startActivity(new Intent(this, MainActivity.class))
-        );
-
         recyclerSmart = findViewById(R.id.recyclerSmart);
-        recyclerSmart.setLayoutManager(new LinearLayoutManager(this));
+        btnBackup = findViewById(R.id.btnBackupHigh);
+        btnChangeAccount = findViewById(R.id.btnChangeAccount);
 
         chipHigh = findViewById(R.id.chipHigh);
         chipMedium = findViewById(R.id.chipMedium);
         chipLow = findViewById(R.id.chipLow);
 
-        priorityEngine = new FilePriorityEngine(this);
+        uploadOverlay = findViewById(R.id.uploadOverlay);
+        progressUpload = findViewById(R.id.progressUpload);
+        txtUploadInfo = findViewById(R.id.txtUploadInfo);
+        txtFileCount = findViewById(R.id.txtFileCount);
 
-        loadSmartFiles();
-        setupChipClicks();
+        btnPause = findViewById(R.id.btnPause);
+        btnResume = findViewById(R.id.btnResume);
+        btnCancel = findViewById(R.id.btnCancel);
     }
 
-    // ---------------- ACCOUNT RESULT ----------------
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-
-        if (requestCode == RC_SIGN_IN) {
-            try {
-                GoogleSignInAccount account =
-                        GoogleSignIn.getSignedInAccountFromIntent(data)
-                                .getResult(ApiException.class);
-
-                updateAccountUI();
-
-            } catch (Exception e) {
-                Toast.makeText(this, "Sign-in cancelled", Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
-    private void updateAccountUI() {
-        GoogleSignInAccount account =
-                GoogleSignIn.getLastSignedInAccount(this);
-
-        if (account == null) {
-            txtAccountStatus.setText("Not signed in");
-            btnChangeAccount.setText("SIGN IN");
-        } else {
-            txtAccountStatus.setText(account.getEmail());
-            btnChangeAccount.setText("CHANGE");
-        }
-    }
-
-    // ---------------- LOAD FILES ----------------
-
-    private void loadSmartFiles() {
-        FileScanner scanner = new FileScanner();
-        List<FileModel> scannedFiles = scanner.scanAllFiles();
-
-        priorityEngine.assignPriorities(scannedFiles, this);
-
-        scannedFiles.sort((a, b) ->
-                Integer.compare(b.getPriority(), a.getPriority())
-        );
-
-        allSmartFiles.clear();
-
-        for (FileModel file : scannedFiles) {
-            if (!file.isDirectory()) {
-                file.setSelected(false); // ✅ default checked
-                allSmartFiles.add(file);
-                if (allSmartFiles.size() >= 200) break;
-            }
-        }
-
-        filteredFiles.clear();
-        filteredFiles.addAll(allSmartFiles);
-
+    private void setupRecycler() {
+        recyclerSmart.setLayoutManager(new LinearLayoutManager(this));
         adapter = new SmartFileAdapter(filteredFiles);
         recyclerSmart.setAdapter(adapter);
-
     }
 
-    // ---------------- FILE PREVIEW ----------------
+    private void setupGoogle() {
+        GoogleSignInOptions gso =
+                new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                        .requestEmail()
+                        .build();
 
-    private void openFileExternally(FileModel file) {
-        File f = new File(file.getPath());
+        googleSignInClient = GoogleSignIn.getClient(this, gso);
+        currentAccount = GoogleSignIn.getLastSignedInAccount(this);
 
-        Intent intent = new Intent(Intent.ACTION_VIEW);
-        intent.setDataAndType(
-                Uri.fromFile(f),
-                "*/*"
+        txtAccountStatus.setText(
+                currentAccount == null ? "Not signed in" : currentAccount.getEmail()
         );
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
-        startActivity(Intent.createChooser(intent, "Open with"));
     }
 
-    // ---------------- CHIPS ----------------
-
-    private void setupChipClicks() {
-        chipHigh.setOnClickListener(v -> {
-            selectChip(chipHigh);
-            filterByPriority(70, 100);
-        });
-
-        chipMedium.setOnClickListener(v -> {
-            selectChip(chipMedium);
-            filterByPriority(40, 69);
-        });
-
-        chipLow.setOnClickListener(v -> {
-            selectChip(chipLow);
-            filterByPriority(0, 39);
-        });
+    private void setupChips() {
+        chipHigh.setOnClickListener(v -> filter(70, 100));
+        chipMedium.setOnClickListener(v -> filter(40, 69));
+        chipLow.setOnClickListener(v -> filter(0, 39));
     }
 
-    private void filterByPriority(int min, int max) {
+    /**
+     * IMPORTANT:
+     * - All files UNCHECKED by default
+     * - Testing-safe behaviour
+     */
+    private void loadFilesAsync() {
+        new Thread(() -> {
+            FilePriorityEngine engine = new FilePriorityEngine(this);
+            List<FileModel> scanned = new FileScanner().scanAllFiles();
+            engine.assignPriorities(scanned, this);
+
+            runOnUiThread(() -> {
+                allFiles.clear();
+                filteredFiles.clear();
+
+                for (FileModel f : scanned) {
+                    if (!f.isDirectory() && allFiles.size() < 200) {
+
+                        // 🔴 CRITICAL CHANGE (TESTING MODE)
+                        f.setSelected(false); // UN-TICK ALL FILES
+
+                        allFiles.add(f);
+                        filteredFiles.add(f);
+                    }
+                }
+
+                adapter.notifyDataSetChanged();
+                txtProgress.setText("Files ready (none selected)");
+            });
+        }).start();
+    }
+
+    private void filter(int min, int max) {
         filteredFiles.clear();
-
-        for (FileModel f : allSmartFiles) {
+        for (FileModel f : allFiles) {
             if (f.getPriority() >= min && f.getPriority() <= max) {
                 filteredFiles.add(f);
             }
@@ -234,69 +175,50 @@ public class SmartBackupActivity extends AppCompatActivity {
         adapter.notifyDataSetChanged();
     }
 
-    private void selectChip(Chip selected) {
-        chipHigh.setChecked(false);
-        chipMedium.setChecked(false);
-        chipLow.setChecked(false);
-        selected.setChecked(true);
-    }
     private void startBackup() {
-
-        selectedFiles.clear();
-        backupIndex = 0;
-        isPaused = false;
-        isCancelled = false;
-
-        // 🔹 Collect only checked files
-        for (FileModel file : allSmartFiles) {
-            if (file.isSelected()) {
-                selectedFiles.add(file);
-            }
-        }
-
-        if (selectedFiles.isEmpty()) {
-            txtProgress.setText("No files selected for backup");
+        if (currentAccount == null) {
+            Toast.makeText(this, "Sign in first", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 🔹 Enable controls
-        btnPause.setEnabled(true);
-        btnResume.setEnabled(false);
-        btnCancel.setEnabled(true);
+        List<FileModel> selected = new ArrayList<>();
+        for (FileModel f : allFiles) {
+            if (f.isSelected()) selected.add(f);
+        }
 
-        txtProgress.setText("Starting backup...");
-        processNextFile();
-    }
-
-
-    private void processNextFile() {
-
-        if (isCancelled) return;
-        if (isPaused) return;
-
-        if (backupIndex >= selectedFiles.size()) {
-            txtProgress.setText("Backup completed (" + selectedFiles.size() + " files)");
-            resetBackupUI();
+        if (selected.isEmpty()) {
+            Toast.makeText(this, "No files selected", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        FileModel file = selectedFiles.get(backupIndex);
-
-        txtProgress.setText(
-                "Backing up: " + file.getName() +
-                        " (" + (backupIndex + 1) + "/" + selectedFiles.size() + ")"
-        );
-
-        // 🔹 Simulate backup delay (safe)
-        handler.postDelayed(() -> {
-            backupIndex++;
-            processNextFile();
-        }, 700); // 0.7 sec per file
-    }
-    private void resetBackupUI() {
-        btnPause.setEnabled(false);
-        btnResume.setEnabled(true);
-        btnCancel.setEnabled(false);
+        uploadManager = new UploadManager(this, currentAccount, selected, this);
+        uploadOverlay.setVisibility(View.VISIBLE);
+        uploadManager.start();
     }
 
+    private void hideOverlay() {
+        uploadOverlay.setVisibility(View.GONE);
+    }
+
+    // ===== Upload callbacks =====
+
+    @Override
+    public void onFileProgress(FileModel file, int progress) {
+        progressUpload.setProgress(progress);
+    }
+
+    @Override
+    public void onFileStateChanged(FileModel file, UploadState state) {}
+
+    @Override
+    public void onGlobalProgress(int completed, int total) {
+        txtFileCount.setText(completed + " / " + total + " files uploaded");
+        txtUploadInfo.setText((completed * 100 / total) + "%");
+    }
+
+    @Override
+    public void onCompleted() {
+        hideOverlay();
+        txtProgress.setText("Backup completed");
+    }
 }
