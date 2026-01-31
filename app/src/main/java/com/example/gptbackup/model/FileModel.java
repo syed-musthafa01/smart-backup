@@ -12,6 +12,7 @@ public class FileModel {
     private boolean isDirectory;
     private long lastModified;
     private int accessCount;
+    private boolean selected = true; // ✅ DEFAULT = SELECTED
 
     private int priority = -1;
 
@@ -41,6 +42,14 @@ public class FileModel {
     public void setDirectory(boolean directory) { isDirectory = directory; }
 
     // ---------------- FILE TYPE HELPERS ----------------
+    public boolean isSelected() {
+        return selected;
+    }
+
+    public void setSelected(boolean selected) {
+        this.selected = selected;
+    }
+
     public boolean isImage() { return "image".equals(type); }
     public boolean isVideo() { return "video".equals(type); }
 

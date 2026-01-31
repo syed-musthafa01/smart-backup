@@ -60,7 +60,9 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar progressGlobal;
     private Chip chipWifi, chipBattery;
     private ImageView imgAccount;
+
     private MaterialButton btnPause, btnResume, btnCancel, btnBackup;
+    private MaterialButton btnOpenSmart;
 
     private FilePriorityEngine priorityEngine;
 
@@ -88,11 +90,16 @@ public class MainActivity extends AppCompatActivity {
         btnResume = findViewById(R.id.btnResume);
         btnCancel = findViewById(R.id.btnCancel);
         btnBackup = findViewById(R.id.btnBackup);
+        btnOpenSmart = findViewById(R.id.btnOpenSmart);
 
         priorityEngine = new FilePriorityEngine(this);
 
         setupUploadButtons();
         setupGoogleSignIn();
+
+        // 🔥 CHANGE ACCOUNT CLICK
+        imgAccount.setOnClickListener(v -> openAccountChooser());
+        txtAccountEmail.setOnClickListener(v -> openAccountChooser());
 
         if (checkPermission()) {
             openRootFolder();
@@ -101,6 +108,12 @@ public class MainActivity extends AppCompatActivity {
         }
 
         btnBackup.setOnClickListener(v -> startSmartBackup());
+
+        btnOpenSmart.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, SmartBackupActivity.class);
+            startActivity(intent);
+        });
+
         refreshSystemStatus();
     }
 
@@ -141,6 +154,14 @@ public class MainActivity extends AppCompatActivity {
         googleSignInClient = GoogleSignIn.getClient(this, gso);
         currentAccount = GoogleSignIn.getLastSignedInAccount(this);
         updateAccountUi(currentAccount);
+    }
+
+    private void openAccountChooser() {
+        googleSignInClient.signOut().addOnCompleteListener(task -> {
+            currentAccount = null;
+            updateAccountUi(null);
+            startActivityForResult(googleSignInClient.getSignInIntent(), RC_SIGN_IN);
+        });
     }
 
     private boolean checkPermission() {
@@ -186,57 +207,10 @@ public class MainActivity extends AppCompatActivity {
         FileScanner scanner = new FileScanner();
         currentFiles = scanner.listFolder(folder);
 
-        // ✅ FIXED CALL
         priorityEngine.assignPriorities(currentFiles, this);
 
         fileAdapter = new FileAdapter(currentFiles);
-        fileAdapter.setOnFileClickListener(new FileAdapter.OnFileClickListener() {
-            @Override
-            public void onFileClicked(FileModel file) {
-                if (file.isDirectory()) {
-                    loadFolder(new File(file.getPath()));
-                } else {
-                    openFile(file);
-                }
-            }
-
-            @Override
-            public void onSelectionChanged(int count) {
-                txtSelectionSummary.setText(
-                        count == 0
-                                ? getString(R.string.no_files_selected)
-                                : getString(R.string.files_selected, count)
-                );
-            }
-        });
-
         recyclerView.setAdapter(fileAdapter);
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (currentFolder != null && currentFolder.getParentFile() != null) {
-            loadFolder(currentFolder.getParentFile());
-        } else {
-            super.onBackPressed();
-        }
-    }
-
-    private void openFile(FileModel model) {
-        File file = new File(model.getPath());
-        Uri uri = FileProvider.getUriForFile(
-                this, getPackageName() + ".provider", file
-        );
-
-        Intent intent = new Intent(Intent.ACTION_VIEW);
-        intent.setDataAndType(uri, "*/*");
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-
-        try {
-            startActivity(Intent.createChooser(intent, "Open with"));
-        } catch (Exception e) {
-            Toast.makeText(this, "No app found", Toast.LENGTH_SHORT).show();
-        }
     }
 
     private void startSmartBackup() {
@@ -248,10 +222,7 @@ public class MainActivity extends AppCompatActivity {
         if (currentAccount != null) {
             startBackupAfterLogin(currentAccount);
         } else {
-            startActivityForResult(
-                    googleSignInClient.getSignInIntent(),
-                    RC_SIGN_IN
-            );
+            startActivityForResult(googleSignInClient.getSignInIntent(), RC_SIGN_IN);
         }
     }
 
@@ -271,14 +242,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startBackupAfterLogin(GoogleSignInAccount account) {
-        List<FileModel> backupList = fileAdapter.getSelectedFiles();
-
-        for (FileModel f : backupList) {
-            f.setUploadState(UploadState.WAITING);
-            f.setUploadProgress(0);
-        }
-
-        uploadManager = new UploadManager(this, account, backupList, null);
+        uploadManager = new UploadManager(this, account,
+                fileAdapter.getSelectedFiles(), null);
         uploadManager.start();
     }
 

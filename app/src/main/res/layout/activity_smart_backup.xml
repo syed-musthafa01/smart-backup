@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="@android:color/black">
+
+    <!-- 🔹 Top Bar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/txtAccountStatus"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Not signed in"
+            android:textColor="@android:color/white"
+            android:textSize="14sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnChangeAccount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SIGN IN" />
+
+        <ImageButton
+            android:id="@+id/btnOpenFileManager"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_manage"
+            android:tint="@android:color/white" />
+    </LinearLayout>
+
+    <!-- 🔹 Title -->
+    <TextView
+        android:id="@+id/txtAiSummary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="AI Backup Summary"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:textColor="@android:color/white"
+        android:paddingTop="12dp"
+        android:paddingBottom="8dp" />
+
+    <!-- 🔹 Chips -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipHigh"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="High"
+            app:chipStrokeWidth="1dp"
+            app:chipBackgroundColor="@android:color/darker_gray" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipMedium"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Medium"
+            app:chipStrokeWidth="1dp"
+            app:chipBackgroundColor="@android:color/darker_gray" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipLow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Low"
+            app:chipStrokeWidth="1dp"
+            app:chipBackgroundColor="@android:color/darker_gray" />
+    </LinearLayout>
+
+    <!-- 🔹 File List -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerSmart"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:paddingTop="8dp" />
+
+    <!-- 🔹 Backup Button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnBackupHigh"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Backup Selected Files" />
+
+</LinearLayout>

@@ -1,9 +1,16 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.GptBackup" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+
+    <!-- Base application theme -->
+    <style name="Base.Theme.GptBackup"
+        parent="Theme.Material3.DayNight.NoActionBar">
+
+        <!-- Keep theme clean.
+             Material3 widgets work automatically.
+             NO widget styles needed here. -->
+
     </style>
 
+    <!-- App theme -->
     <style name="Theme.GptBackup" parent="Base.Theme.GptBackup" />
+
 </resources>
