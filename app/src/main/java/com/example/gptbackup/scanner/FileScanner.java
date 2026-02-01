@@ -1,8 +1,6 @@
 package com.example.gptbackup.scanner;
 
-
 import android.os.Environment;
-
 import com.example.gptbackup.model.FileModel;
 
 import java.io.File;
@@ -19,9 +17,6 @@ public class FileScanner {
         return fileList;
     }
 
-    /**
-     * Returns direct children of the given folder, used by the file‑manager style UI.
-     */
     public List<FileModel> listFolder(File folder) {
         List<FileModel> list = new ArrayList<>();
         if (folder == null || !folder.exists() || !folder.canRead()) return list;
@@ -38,7 +33,8 @@ public class FileScanner {
             FileModel model = new FileModel(name, path, size, type);
             model.setDirectory(file.isDirectory());
             model.setLastModified(file.lastModified());
-            model.setCategory(type);
+            model.setType(type);
+
             list.add(model);
         }
         return list;
@@ -61,7 +57,8 @@ public class FileScanner {
 
                 FileModel model = new FileModel(name, path, size, type);
                 model.setLastModified(file.lastModified());
-                model.setCategory(type);
+                model.setType(type);
+
                 fileList.add(model);
             }
         }
@@ -72,7 +69,8 @@ public class FileScanner {
         if (name.endsWith(".jpg") || name.endsWith(".png")) return "image";
         if (name.endsWith(".mp4") || name.endsWith(".mkv")) return "video";
         if (name.endsWith(".mp3") || name.endsWith(".wav")) return "audio";
-        if (name.endsWith(".pdf") || name.endsWith(".doc") || name.endsWith(".docx")) return "document";
+        if (name.endsWith(".pdf") || name.endsWith(".doc") || name.endsWith(".docx"))
+            return "document";
         return "other";
     }
 }

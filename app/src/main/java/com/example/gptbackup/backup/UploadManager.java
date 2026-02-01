@@ -4,6 +4,9 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 
+import com.example.gptbackup.db.BackupDatabase;
+import com.example.gptbackup.db.BackupFileDao;
+import com.example.gptbackup.db.BackupFileEntity;
 import com.example.gptbackup.model.FileModel;
 import com.example.gptbackup.model.UploadState;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
@@ -17,10 +20,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * High‑level upload controller.
- * - Sorts by AI priority (High -> Medium -> Low)
- * - Exposes pause / resume / cancel
- * - Reports per‑file + global progress back to UI thread.
+ * UploadManager – Phase 2
+ * • Priority-based upload
+ * • Duplicate & change detection
+ * • Pause / Resume / Cancel
  */
 public class UploadManager {
 
@@ -34,142 +37,153 @@ public class UploadManager {
     private final Context context;
     private final GoogleSignInAccount account;
     private final Listener listener;
+
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final AtomicBoolean canceled = new AtomicBoolean(false);
 
+    private final BackupFileDao backupDao;
     private List<FileModel> uploadQueue = new ArrayList<>();
 
-    public UploadManager(Context context,
-                         GoogleSignInAccount account,
-                         List<FileModel> files,
-                         Listener listener) {
+    public UploadManager(
+            Context context,
+            GoogleSignInAccount account,
+            List<FileModel> files,
+            Listener listener
+    ) {
         this.context = context.getApplicationContext();
         this.account = account;
         this.listener = listener;
 
-        // Sort by priority: high->medium->low
-        List<FileModel> copy = new ArrayList<>(files);
-        Collections.sort(copy, new Comparator<FileModel>() {
+        this.backupDao = BackupDatabase
+                .getInstance(this.context)
+                .backupFileDao();
+
+        // Sort by priority (High → Low)
+        List<FileModel> sorted = new ArrayList<>(files);
+        Collections.sort(sorted, new Comparator<FileModel>() {
             @Override
             public int compare(FileModel o1, FileModel o2) {
                 return Integer.compare(o2.getPriority(), o1.getPriority());
             }
         });
-        this.uploadQueue = copy;
+        this.uploadQueue = sorted;
     }
 
+    // ================= START =================
+
     public void start() {
-        canceled.set(false);
         paused.set(false);
-        executor.execute(new Runnable() {
-            @Override
-            public void run() {
-                int completed = 0;
-                int total = uploadQueue.size();
+        canceled.set(false);
 
-                for (FileModel file : uploadQueue) {
-                    if (canceled.get()) {
-                        updateState(file, UploadState.CANCELED);
-                        break;
-                    }
+        executor.execute(() -> {
+            int completed = 0;
+            int total = uploadQueue.size();
 
-                    // Wait if paused
-                    while (paused.get() && !canceled.get()) {
-                        try {
-                            Thread.sleep(300);
-                        } catch (InterruptedException ignored) {
-                        }
-                    }
+            for (FileModel file : uploadQueue) {
 
-                    if (canceled.get()) {
-                        updateState(file, UploadState.CANCELED);
-                        break;
-                    }
+                if (canceled.get()) break;
 
-                    updateState(file, UploadState.UPLOADING);
-                    boolean ok = DriveRestUploader.uploadSingleFile(context, account, file,
-                            new DriveRestUploader.ProgressCallback() {
-                                @Override
-                                public void onProgress(final int progress) {
-                                    file.setUploadProgress(progress);
-                                    if (listener != null) {
-                                        mainHandler.post(new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                listener.onFileProgress(file, progress);
-                                            }
-                                        });
-                                    }
-                                }
-                            });
+                // Pause handling
+                while (paused.get() && !canceled.get()) {
+                    sleep(300);
+                }
 
-                    if (ok) {
-                        file.setUploadProgress(100);
-                        updateState(file, UploadState.COMPLETED);
-                        completed++;
-                    } else {
-                        updateState(file, UploadState.FAILED);
-                    }
+                if (canceled.get()) break;
 
-                    final int finalCompleted = completed;
-                    if (listener != null) {
-                        mainHandler.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                listener.onGlobalProgress(finalCompleted, total);
-                            }
-                        });
+                // ---------- PHASE 2 SMART CHECK ----------
+                BackupFileEntity record = backupDao.getByPath(file.getPath());
+
+                boolean shouldUpload = true;
+
+                if (record != null) {
+                    boolean unchanged =
+                            record.lastUploadedTime >= file.getLastModified()
+                                    && record.uploadedFileSize == file.getSize();
+
+                    if (unchanged) {
+                        shouldUpload = false;
                     }
                 }
 
-                if (listener != null && !canceled.get()) {
-                    mainHandler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            listener.onCompleted();
-                        }
-                    });
+                if (!shouldUpload) {
+                    updateState(file, UploadState.SKIPPED);
+                    completed++;
+                    notifyGlobal(completed, total);
+                    continue;
                 }
+
+                // ---------- UPLOAD ----------
+                updateState(file, UploadState.UPLOADING);
+
+                boolean success = DriveRestUploader.uploadSingleFile(
+                        context,
+                        account,
+                        file,
+                        progress -> {
+                            file.setUploadProgress(progress);
+                            mainHandler.post(() ->
+                                    listener.onFileProgress(file, progress));
+                        }
+                );
+
+                if (success) {
+                    updateState(file, UploadState.COMPLETED);
+
+                    BackupFileEntity entity = new BackupFileEntity();
+                    entity.path = file.getPath();
+                    entity.driveFileId = file.getDriveFileId();
+                    entity.lastUploadedTime = System.currentTimeMillis();
+                    entity.uploadedFileSize = file.getSize();
+                    entity.priority = file.getPriority();
+
+                    backupDao.insertOrUpdate(entity);
+                    completed++;
+                } else {
+                    updateState(file, UploadState.FAILED);
+                }
+
+                notifyGlobal(completed, total);
+            }
+
+            if (!canceled.get()) {
+                mainHandler.post(listener::onCompleted);
             }
         });
     }
 
+    // ================= CONTROLS =================
+
     public void pause() {
         paused.set(true);
-        for (FileModel f : uploadQueue) {
-            if (f.getUploadState() == UploadState.UPLOADING) {
-                updateState(f, UploadState.PAUSED);
-                break;
-            }
-        }
     }
 
     public void resume() {
         paused.set(false);
-        for (FileModel f : uploadQueue) {
-            if (f.getUploadState() == UploadState.PAUSED) {
-                updateState(f, UploadState.WAITING);
-            }
-        }
     }
 
     public void cancel() {
         canceled.set(true);
     }
 
-    private void updateState(final FileModel file, final UploadState state) {
+    // ================= HELPERS =================
+
+    private void updateState(FileModel file, UploadState state) {
         file.setUploadState(state);
-        if (listener != null) {
-            mainHandler.post(new Runnable() {
-                @Override
-                public void run() {
-                    listener.onFileStateChanged(file, state);
-                }
-            });
-        }
+        mainHandler.post(() ->
+                listener.onFileStateChanged(file, state));
+    }
+
+    private void notifyGlobal(int completed, int total) {
+        mainHandler.post(() ->
+                listener.onGlobalProgress(completed, total));
+    }
+
+    private void sleep(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException ignored) {}
     }
 }
-

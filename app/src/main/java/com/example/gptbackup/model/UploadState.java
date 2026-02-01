@@ -7,5 +7,5 @@ public enum UploadState {
     PAUSED,
     COMPLETED,
     FAILED,
-    CANCELED
+    SKIPPED, CANCELED
 }
