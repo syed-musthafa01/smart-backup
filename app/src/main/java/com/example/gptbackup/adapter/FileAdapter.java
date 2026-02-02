@@ -1,4 +1,4 @@
-    package com.example.gptbackup.adapter;
+package com.example.gptbackup.adapter;
 
     import com.bumptech.glide.Glide;
     import java.io.File;
@@ -30,6 +30,7 @@
 
         public interface OnFileClickListener {
             void onFileClicked(FileModel file);
+
             void onSelectionChanged(int selectedCount);
         }
 
