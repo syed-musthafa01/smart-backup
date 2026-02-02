@@ -1,8 +1,6 @@
 package com.example.gptbackup.ui;
 
-import android.Manifest;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -13,9 +11,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -25,6 +21,7 @@ import com.example.gptbackup.adapter.FileAdapter;
 import com.example.gptbackup.backup.SystemStatusChecker;
 import com.example.gptbackup.backup.UploadManager;
 import com.example.gptbackup.model.FileModel;
+import com.example.gptbackup.model.UploadState;
 import com.example.gptbackup.scanner.FileScanner;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
@@ -41,9 +38,12 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity
+        implements UploadManager.Listener {
 
     private static final int RC_SIGN_IN = 101;
+
+    private boolean storageLoaded = false;
 
     private RecyclerView recyclerView;
     private FileAdapter fileAdapter;
@@ -93,19 +93,18 @@ public class MainActivity extends AppCompatActivity {
         setupUploadButtons();
         setupGoogleSignIn();
 
-        // ✅ Account chooser (SAFE)
         imgAccount.setOnClickListener(v -> openAccountChooser());
         txtAccountEmail.setOnClickListener(v -> openAccountChooser());
 
-        if (hasFullStorageAccess()) {
-            openRootFolder();
-        } else {
+        if (!hasFullStorageAccess()) {
             requestFullStorageAccess();
         }
 
-        MaterialButton btnOpenSmart = findViewById(R.id.btnOpenSmart);
-        btnOpenSmart.setOnClickListener(v ->
-                startActivity(new Intent(this, SmartBackupActivity.class)));
+        findViewById(R.id.btnOpenSmart)
+                .setOnClickListener(v ->
+                        startActivity(new Intent(this, SmartBackupActivity.class)));
+
+        btnBackup.setOnClickListener(v -> startSmartBackup());
 
         refreshSystemStatus();
     }
@@ -145,7 +144,9 @@ public class MainActivity extends AppCompatActivity {
             try {
                 currentAccount = task.getResult(ApiException.class);
                 updateAccountUi(currentAccount);
-                startBackupAfterLogin(currentAccount);
+                Toast.makeText(this,
+                        "Signed in as " + currentAccount.getEmail(),
+                        Toast.LENGTH_SHORT).show();
             } catch (ApiException e) {
                 Toast.makeText(this, "Sign in failed", Toast.LENGTH_SHORT).show();
             }
@@ -155,20 +156,17 @@ public class MainActivity extends AppCompatActivity {
     private void updateAccountUi(GoogleSignInAccount account) {
         if (account == null) {
             txtAccountEmail.setText(R.string.account_not_signed_in);
-            imgAccount.setImageResource(R.mipmap.ic_launcher_round);
         } else {
             txtAccountEmail.setText(account.getEmail());
-            imgAccount.setImageResource(R.mipmap.ic_launcher_round);
         }
+        imgAccount.setImageResource(R.mipmap.ic_launcher_round);
     }
 
     /* ================= STORAGE ================= */
 
     private boolean hasFullStorageAccess() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            return Environment.isExternalStorageManager();
-        }
-        return true;
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.R
+                || Environment.isExternalStorageManager();
     }
 
     private void requestFullStorageAccess() {
@@ -198,11 +196,34 @@ public class MainActivity extends AppCompatActivity {
 
         FileScanner scanner = new FileScanner();
         currentFiles = scanner.listFolder(folder);
-
         priorityEngine.assignPriorities(currentFiles, this);
 
         fileAdapter = new FileAdapter(currentFiles);
+        fileAdapter.setOnFileClickListener(new FileAdapter.OnFileClickListener() {
+
+            @Override
+            public void onFileClicked(FileModel file) {
+                if (file.isDirectory()) {
+                    loadFolder(new File(file.getPath()));
+                }
+            }
+
+            @Override
+            public void onSelectionChanged(int selectedCount) {
+                txtSelectionSummary.setText(selectedCount + " files selected");
+            }
+        });
+
         recyclerView.setAdapter(fileAdapter);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (!storageLoaded && hasFullStorageAccess()) {
+            storageLoaded = true;
+            openRootFolder();
+        }
     }
 
     private void startSmartBackup() {
@@ -226,9 +247,15 @@ public class MainActivity extends AppCompatActivity {
                 this,
                 account,
                 fileAdapter.getSelectedFiles(),
-                null
+                this
         );
+
+        // ✅ START UPLOAD THREAD (THIS WAS MISSING)
         uploadManager.start();
+
+        // ✅ Make progress UI visible immediately
+        progressGlobal.setVisibility(ProgressBar.VISIBLE);
+        txtGlobalStatus.setText("Starting backup...");
     }
 
     /* ================= STATUS ================= */
@@ -243,15 +270,43 @@ public class MainActivity extends AppCompatActivity {
                 : getString(R.string.status_battery_low));
     }
 
+    @Override
+    public void onBackPressed() {
+        if (currentFolder != null && currentFolder.getParentFile() != null) {
+            loadFolder(currentFolder.getParentFile());
+        } else {
+            super.onBackPressed();
+        }
+    }
+
+    /* ================= UPLOAD CALLBACKS ================= */
+
+    @Override
+    public void onFileProgress(FileModel file, int progress) {}
+
+    @Override
+    public void onGlobalProgress(int completed, int total) {
+        progressGlobal.setMax(total);
+        progressGlobal.setProgress(completed);
+        txtGlobalStatus.setText("Uploaded " + completed + " / " + total);
+    }
+
+    @Override
+    public void onFileStateChanged(FileModel file, UploadState state) {}
+
+    @Override
+    public void onCompleted() {
+        txtGlobalStatus.setText("Backup completed");
+        progressGlobal.setVisibility(ProgressBar.GONE);
+    }
+
     private void setupUploadButtons() {
         btnPause.setOnClickListener(v -> {
             if (uploadManager != null) uploadManager.pause();
         });
-
         btnResume.setOnClickListener(v -> {
             if (uploadManager != null) uploadManager.resume();
         });
-
         btnCancel.setOnClickListener(v -> {
             if (uploadManager != null) uploadManager.cancel();
         });
