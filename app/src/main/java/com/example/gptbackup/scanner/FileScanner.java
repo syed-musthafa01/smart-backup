@@ -10,13 +10,29 @@ import java.util.List;
 public class FileScanner {
 
     private final List<FileModel> fileList = new ArrayList<>();
+    private boolean excludeNoMedia = false; // NEW (default = show all)
 
+    // ================= PUBLIC API =================
+
+    // Existing behavior (UNCHANGED)
     public List<FileModel> scanAllFiles() {
+        excludeNoMedia = false; // show everything
+        fileList.clear();
         File root = Environment.getExternalStorageDirectory();
         scanFolder(root);
         return fileList;
     }
 
+    // NEW: Used by Smart Backup
+    public List<FileModel> scanAllFiles(boolean excludeNoMedia) {
+        this.excludeNoMedia = excludeNoMedia;
+        fileList.clear();
+        File root = Environment.getExternalStorageDirectory();
+        scanFolder(root);
+        return fileList;
+    }
+
+    // File Manager folder listing (UNCHANGED behavior)
     public List<FileModel> listFolder(File folder) {
         List<FileModel> list = new ArrayList<>();
         if (folder == null || !folder.exists() || !folder.canRead()) return list;
@@ -25,6 +41,12 @@ public class FileScanner {
         if (children == null) return list;
 
         for (File file : children) {
+
+            // Apply filter ONLY if enabled
+            if (excludeNoMedia && file.getName().equalsIgnoreCase(".nomedia")) {
+                continue;
+            }
+
             String name = file.getName();
             String path = file.getAbsolutePath();
             long size = file.isDirectory() ? 0L : file.length();
@@ -40,6 +62,8 @@ public class FileScanner {
         return list;
     }
 
+    // ================= INTERNAL SCAN =================
+
     private void scanFolder(File folder) {
         if (folder == null || !folder.exists() || !folder.canRead()) return;
 
@@ -47,6 +71,12 @@ public class FileScanner {
         if (files == null) return;
 
         for (File file : files) {
+
+            // Apply filter ONLY for Smart Backup
+            if (excludeNoMedia && file.getName().equalsIgnoreCase(".nomedia")) {
+                continue;
+            }
+
             if (file.isDirectory()) {
                 scanFolder(file);
             } else {
@@ -63,6 +93,8 @@ public class FileScanner {
             }
         }
     }
+
+    // ================= HELPERS =================
 
     private String getFileType(String name) {
         name = name.toLowerCase();

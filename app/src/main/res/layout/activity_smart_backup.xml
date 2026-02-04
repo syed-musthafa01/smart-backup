@@ -46,6 +46,60 @@
                 android:text="SIGN IN"
                 app:backgroundTint="#7C4DFF" />
         </LinearLayout>
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnAll"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="All"/>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnImages"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="Images"
+                    android:layout_marginStart="8dp"/>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnVideos"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="Videos"
+                    android:layout_marginStart="8dp"/>
+
+                <!-- ✅ AUDIO BUTTON -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnAudio"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="Audio"
+                    android:layout_marginStart="8dp"/>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnDocs"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="Documents"
+                    android:layout_marginStart="8dp"/>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnApps"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="Apps"
+                    android:layout_marginStart="8dp"/>
+            </LinearLayout>
+        </HorizontalScrollView>
 
         <!-- CHIPS -->
         <HorizontalScrollView
