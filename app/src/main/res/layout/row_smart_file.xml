@@ -9,7 +9,7 @@
     app:cardElevation="4dp"
     app:cardBackgroundColor="#434242">
 
-    <!-- ONLY ONE CHILD FOR MaterialCardView -->
+    <!-- ONLY ONE CHILD -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
@@ -30,7 +30,7 @@
                 android:src="@drawable/ic_file_generic"
                 android:scaleType="centerInside"/>
 
-            <!-- FILE INFO -->
+            <!-- FILE INFO + PROGRESS -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -57,6 +57,36 @@
                     android:textColor="#D1D5DB"
                     android:textSize="12sp"
                     android:layout_marginTop="2dp"/>
+
+                <!-- 🔹 UPLOAD PROGRESS -->
+                <LinearLayout
+                    android:id="@+id/progressContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:visibility="gone">
+
+                    <ProgressBar
+                        android:id="@+id/fileProgressBar"
+                        style="?android:attr/progressBarStyleHorizontal"
+                        android:layout_width="0dp"
+                        android:layout_height="6dp"
+                        android:layout_weight="1"
+                        android:max="100"
+                        android:progress="0"/>
+
+                    <TextView
+                        android:id="@+id/txtProgressPercent"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="0%"
+                        android:textColor="#FFFFFF"
+                        android:textSize="11sp"/>
+                </LinearLayout>
+
             </LinearLayout>
 
             <!-- SELECT CHECKBOX -->
@@ -66,7 +96,7 @@
                 android:layout_height="wrap_content"/>
         </LinearLayout>
 
-        <!-- UPLOAD CONTROLS (OVERLAY – HIDDEN INITIALLY) -->
+        <!-- UPLOAD CONTROLS (OVERLAY) -->
         <LinearLayout
             android:id="@+id/uploadControls"
             android:layout_width="wrap_content"

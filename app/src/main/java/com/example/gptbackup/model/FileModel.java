@@ -1,5 +1,9 @@
 package com.example.gptbackup.model;
 
+import com.example.gptbackup.backup.DriveRestUploader;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+
 public class FileModel {
 
     private String name;
@@ -136,10 +140,16 @@ public class FileModel {
                 || lowerPath.contains("/android/obb/")
                 || lowerPath.contains("/android/media/");
     }
-    // ---- Upload control flags ----
+
+    // ================= Upload control flags =================
+
     private boolean uploading = false;
-    private boolean pausedByUser = false;
+
     private boolean canceledByUser = false;
+
+    // ✅ NEW: real upload handle (network-level control)
+    private DriveRestUploader.UploadHandle uploadHandle;
+    private final AtomicBoolean pausedByUser = new AtomicBoolean(false);
 
     // ---- Getters ----
     public boolean isUploading() {
@@ -147,28 +157,49 @@ public class FileModel {
     }
 
     public boolean isPausedByUser() {
-        return pausedByUser;
+        return pausedByUser.get();
     }
-
     public boolean isCanceledByUser() {
         return canceledByUser;
     }
 
-    // ---- Setters ----
-    public void setUploading(boolean uploading) {
-        this.uploading = uploading;
+    public AtomicBoolean getPausedFlag() {
+        return pausedByUser;
     }
 
+    // ---- Setters / Controls ----
+
+    public void setUploading(boolean uploading) {
+        this.uploading = uploading;
+        if (uploading) {
+            this.canceledByUser = false;
+            //this.pausedByUser = false;
+            pausedByUser.set(false);
+        }
+    }
     public void pauseByUser() {
-        this.pausedByUser = true;
+        pausedByUser.set(true);
+        uploadState = UploadState.PAUSED;
     }
 
     public void resumeByUser() {
-        this.pausedByUser = false;
+        pausedByUser.set(false);
+        uploadState = UploadState.UPLOADING;
     }
 
     public void cancelByUser() {
         this.canceledByUser = true;
+        this.uploadState = UploadState.CANCELED;
+
+        // 🔴 HARD CANCEL (stops upload immediately)
+        if (uploadHandle != null) {
+            uploadHandle.cancel();
+        }
+    }
+
+    // ---- Upload handle wiring ----
+    public void setUploadHandle(DriveRestUploader.UploadHandle uploadHandle) {
+        this.uploadHandle = uploadHandle;
     }
 
 }

@@ -347,6 +347,8 @@ public class SmartBackupActivity extends AppCompatActivity
                 selected,
                 this   // Listener = SmartBackupActivity
         );
+        adapter.setBackupRunning(true);
+    
 
         uploadManager.start();
 

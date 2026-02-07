@@ -10,6 +10,7 @@ import android.webkit.MimeTypeMap;
 import android.widget.CheckBox;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -38,7 +39,7 @@ public class SmartFileAdapter
         this.files = files;
     }
 
-    // 🔹 Called from Activity
+    // Called from Activity
     public void setBackupRunning(boolean running) {
         this.backupRunning = running;
         notifyDataSetChanged();
@@ -63,13 +64,13 @@ public class SmartFileAdapter
         Context context = holder.itemView.getContext();
         File realFile = new File(file.getPath());
 
-        // ================= FILE NAME =================
+        // FILE NAME
         holder.txtName.setText(file.getName());
 
-        // ================= FILE INFO =================
+        // FILE INFO
         holder.txtInfo.setText(buildInfoText(file));
 
-        // ================= PREVIEW =================
+        // PREVIEW
         if (realFile.exists() && !file.isDirectory()
                 && (file.isImage() || file.isVideo())) {
 
@@ -82,39 +83,55 @@ public class SmartFileAdapter
             holder.imgPreview.setImageResource(getFileIcon(file));
         }
 
-        // ================= CHECKBOX =================
+        // CHECKBOX
         holder.checkSelect.setOnCheckedChangeListener(null);
         holder.checkSelect.setChecked(file.isSelected());
         holder.checkSelect.setOnCheckedChangeListener(
-                (buttonView, isChecked) -> file.setSelected(isChecked)
+                (btn, checked) -> file.setSelected(checked)
         );
 
-        // ================= UPLOAD CONTROLS =================
+        boolean hideCheckbox =
+                backupRunning
+                        && file.isSelected()
+                        && (file.getUploadState() == UploadState.UPLOADING
+                        || file.getUploadState() == UploadState.PAUSED);
 
-        // Show controls ONLY when backup is running
+        holder.checkSelect.setVisibility(
+                hideCheckbox ? View.INVISIBLE : View.VISIBLE
+        );
+
+        // UPLOAD CONTROLS
         holder.uploadControls.setVisibility(
                 backupRunning ? View.VISIBLE : View.GONE
         );
 
-        // Reset all first (VERY IMPORTANT)
         holder.btnPause.setVisibility(View.GONE);
         holder.btnResume.setVisibility(View.GONE);
         holder.btnCancel.setVisibility(View.GONE);
 
-        if (backupRunning) {
-            UploadState state = file.getUploadState();
+        // PROGRESS
+        if (file.getUploadState() == UploadState.UPLOADING) {
+            holder.progressContainer.setVisibility(View.VISIBLE);
+            holder.fileProgressBar.setProgress(file.getUploadProgress());
+            holder.txtProgressPercent.setText(
+                    file.getUploadProgress() + "%"
+            );
+        } else {
+            holder.progressContainer.setVisibility(View.GONE);
+        }
 
-            if (state == UploadState.UPLOADING) {
+        // STATE CONTROLS
+        if (backupRunning) {
+            if (file.getUploadState() == UploadState.UPLOADING) {
                 holder.btnPause.setVisibility(View.VISIBLE);
                 holder.btnCancel.setVisibility(View.VISIBLE);
-            }
-            else if (state == UploadState.PAUSED) {
+            } else if (file.getUploadState() == UploadState.PAUSED) {
                 holder.btnResume.setVisibility(View.VISIBLE);
                 holder.btnCancel.setVisibility(View.VISIBLE);
             }
         }
 
-        // ================= BUTTON ACTIONS =================
+        // BUTTON ACTIONS
         holder.btnPause.setOnClickListener(v -> {
             file.pauseByUser();
             notifyItemChanged(position);
@@ -130,7 +147,7 @@ public class SmartFileAdapter
             notifyItemChanged(position);
         });
 
-        // ================= OPEN FILE =================
+        // OPEN FILE
         holder.itemView.setOnClickListener(v ->
                 openFileExternally(context, realFile)
         );
@@ -141,7 +158,7 @@ public class SmartFileAdapter
         return files.size();
     }
 
-    // ================= INFO TEXT =================
+    // ================= HELPERS =================
 
     private String buildInfoText(FileModel file) {
 
@@ -180,18 +197,8 @@ public class SmartFileAdapter
 
     private String getUploadStateLabel(UploadState state) {
         if (state == null) return "PENDING";
-        switch (state) {
-            case UPLOADING: return "UPLOADING";
-            case PAUSED: return "PAUSED";
-            case COMPLETED: return "COMPLETED";
-            case FAILED: return "FAILED";
-            case SKIPPED: return "SKIPPED";
-            case CANCELED: return "CANCELED";
-            default: return "PENDING";
-        }
+        return state.name();
     }
-
-    // ================= FILE OPEN =================
 
     private void openFileExternally(Context context, File file) {
 
@@ -207,11 +214,11 @@ public class SmartFileAdapter
                     file
             );
 
-            String mimeType = getMimeType(file.getName());
-            if (mimeType == null) mimeType = "*/*";
+            String mime = getMimeType(file.getName());
+            if (mime == null) mime = "*/*";
 
             Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setDataAndType(uri, mimeType);
+            intent.setDataAndType(uri, mime);
             intent.setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
             context.startActivity(Intent.createChooser(intent, "Open with"));
@@ -230,8 +237,6 @@ public class SmartFileAdapter
                 .getMimeTypeFromExtension(ext.toLowerCase());
     }
 
-    // ================= ICON =================
-
     private int getFileIcon(FileModel file) {
         if (file.isDirectory()) return R.drawable.ic_folder;
         if (file.isAudio()) return R.drawable.ic_audio;
@@ -240,8 +245,6 @@ public class SmartFileAdapter
         return R.drawable.ic_file_generic;
     }
 
-    // ================= VIEW HOLDER =================
-
     static class ViewHolder extends RecyclerView.ViewHolder {
 
         ImageView imgPreview;
@@ -249,6 +252,10 @@ public class SmartFileAdapter
         TextView txtName, txtInfo;
         CheckBox checkSelect;
         LinearLayout uploadControls;
+
+        LinearLayout progressContainer;
+        ProgressBar fileProgressBar;
+        TextView txtProgressPercent;
 
         ViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -262,7 +269,11 @@ public class SmartFileAdapter
             btnResume = itemView.findViewById(R.id.btnResume);
             btnCancel = itemView.findViewById(R.id.btnCancel);
 
-            uploadControls = itemView.findViewById(R.id.upl);
+            uploadControls = itemView.findViewById(R.id.uploadControls);
+
+            progressContainer = itemView.findViewById(R.id.progressContainer);
+            fileProgressBar = itemView.findViewById(R.id.fileProgressBar);
+            txtProgressPercent = itemView.findViewById(R.id.txtProgressPercent);
         }
     }
 }

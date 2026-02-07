@@ -17,13 +17,14 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * UploadManager – Industrial Upload Engine
- * • Priority-based upload
+ * • Parallel uploads
  * • Per-file pause / resume / cancel
- * • RecyclerView live updates
- * • Background-safe
+ * • Safe UI callbacks
+ * • Database sync
  */
 public class UploadManager {
 
@@ -38,8 +39,10 @@ public class UploadManager {
     private final GoogleSignInAccount account;
     private final Listener listener;
 
+    // ✅ PARALLEL UPLOADS (3 at a time)
     private final ExecutorService executor =
-            Executors.newSingleThreadExecutor();
+            Executors.newFixedThreadPool(3);
+
     private final Handler mainHandler =
             new Handler(Looper.getMainLooper());
 
@@ -63,7 +66,7 @@ public class UploadManager {
                 .getInstance(this.context)
                 .backupFileDao();
 
-        // Sort by priority (HIGH → LOW)
+        // Priority sort (HIGH → LOW)
         List<FileModel> sorted = new ArrayList<>(files);
         Collections.sort(sorted,
                 (a, b) -> Integer.compare(b.getPriority(), a.getPriority()));
@@ -78,38 +81,36 @@ public class UploadManager {
         globalPaused.set(false);
         globalCanceled.set(false);
 
-        executor.execute(() -> {
+        int total = uploadQueue.size();
+        AtomicInteger completed = new AtomicInteger(0);
 
-            int completed = 0;
-            int total = uploadQueue.size();
+        for (FileModel file : uploadQueue) {
 
-            for (FileModel file : uploadQueue) {
+            executor.execute(() -> {
 
-                if (globalCanceled.get()) break;
+                if (globalCanceled.get()) return;
 
-                // -------- USER CANCELED BEFORE START --------
+                // USER canceled before start
                 if (file.isCanceledByUser()) {
                     updateState(file, UploadState.CANCELED);
-                    completed++;
-                    notifyGlobal(completed, total);
-                    continue;
+                    notifyDone(completed.incrementAndGet(), total);
+                    return;
                 }
 
-                // -------- WAIT FOR PAUSE --------
+                // WAIT FOR PAUSE
                 while ((globalPaused.get() || file.isPausedByUser())
-                        && !globalCanceled.get()
-                        && !file.isCanceledByUser()) {
+                        && !file.isCanceledByUser()
+                        && !globalCanceled.get()) {
                     sleep(300);
                 }
 
-                if (file.isCanceledByUser()) {
+                if (file.isCanceledByUser() || globalCanceled.get()) {
                     updateState(file, UploadState.CANCELED);
-                    completed++;
-                    notifyGlobal(completed, total);
-                    continue;
+                    notifyDone(completed.incrementAndGet(), total);
+                    return;
                 }
 
-                // -------- DUPLICATE CHECK --------
+                // DUPLICATE CHECK
                 BackupFileEntity record =
                         backupDao.getByPath(file.getPath());
 
@@ -120,33 +121,45 @@ public class UploadManager {
 
                     if (unchanged) {
                         updateState(file, UploadState.SKIPPED);
-                        completed++;
-                        notifyGlobal(completed, total);
-                        continue;
+                        notifyDone(completed.incrementAndGet(), total);
+                        return;
                     }
                 }
 
-                // -------- START UPLOAD --------
+                // START UPLOAD
                 file.setUploading(true);
                 updateState(file, UploadState.UPLOADING);
 
-                boolean success = DriveRestUploader.uploadSingleFile(
-                        context,
-                        account,
-                        file,
-                        progress -> {
-                            file.setUploadProgress(progress);
-                            mainHandler.post(() ->
-                                    listener.onFileProgress(file, progress));
-                        }
-                );
+                DriveRestUploader.UploadHandle handle =
+                        DriveRestUploader.uploadSingleFile(
+                                context,
+                                account,
+                                file,
+                                progress -> {
+                                    file.setUploadProgress(progress);
+                                    mainHandler.post(() ->
+                                            listener.onFileProgress(file, progress));
+                                }
+                        );
+
+                file.setUploadHandle(handle);
+
+                // WAIT FOR COMPLETION
+                while (!file.isCanceledByUser()
+                        && !globalCanceled.get()
+                        && file.getUploadProgress() < 100) {
+                    sleep(300);
+                }
 
                 file.setUploading(false);
 
-                // -------- FINAL STATE --------
+                // FINAL STATE
                 if (file.isCanceledByUser()) {
+                    handle.cancel(); // 🔥 REAL CANCEL
                     updateState(file, UploadState.CANCELED);
-                } else if (success) {
+
+                } else if (file.getUploadProgress() >= 100) {
+
                     updateState(file, UploadState.COMPLETED);
 
                     BackupFileEntity entity = new BackupFileEntity();
@@ -157,18 +170,14 @@ public class UploadManager {
                     entity.priority = file.getPriority();
 
                     backupDao.insertOrUpdate(entity);
+
                 } else {
                     updateState(file, UploadState.FAILED);
                 }
 
-                completed++;
-                notifyGlobal(completed, total);
-            }
-
-            if (!globalCanceled.get()) {
-                mainHandler.post(listener::onCompleted);
-            }
-        });
+                notifyDone(completed.incrementAndGet(), total);
+            });
+        }
     }
 
     // ================= GLOBAL CONTROLS =================
@@ -193,9 +202,13 @@ public class UploadManager {
                 listener.onFileStateChanged(file, state));
     }
 
-    private void notifyGlobal(int completed, int total) {
+    private void notifyDone(int completed, int total) {
         mainHandler.post(() ->
                 listener.onGlobalProgress(completed, total));
+
+        if (completed == total && !globalCanceled.get()) {
+            mainHandler.post(listener::onCompleted);
+        }
     }
 
     private void sleep(long ms) {
