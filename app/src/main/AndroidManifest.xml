@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.GET_ACCOUNTS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
 
     <application
         android:allowBackup="true"
@@ -21,6 +23,15 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.GptBackup">
+        <service
+            android:name=".backup.UploadForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+        <service
+            android:name=".backup.UploadForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
 
         <!-- 🔹 SMART BACKUP = MAIN / LAUNCHER ACTIVITY -->
         <activity

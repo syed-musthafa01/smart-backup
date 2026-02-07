@@ -136,4 +136,39 @@ public class FileModel {
                 || lowerPath.contains("/android/obb/")
                 || lowerPath.contains("/android/media/");
     }
+    // ---- Upload control flags ----
+    private boolean uploading = false;
+    private boolean pausedByUser = false;
+    private boolean canceledByUser = false;
+
+    // ---- Getters ----
+    public boolean isUploading() {
+        return uploading;
+    }
+
+    public boolean isPausedByUser() {
+        return pausedByUser;
+    }
+
+    public boolean isCanceledByUser() {
+        return canceledByUser;
+    }
+
+    // ---- Setters ----
+    public void setUploading(boolean uploading) {
+        this.uploading = uploading;
+    }
+
+    public void pauseByUser() {
+        this.pausedByUser = true;
+    }
+
+    public void resumeByUser() {
+        this.pausedByUser = false;
+    }
+
+    public void cancelByUser() {
+        this.canceledByUser = true;
+    }
+
 }

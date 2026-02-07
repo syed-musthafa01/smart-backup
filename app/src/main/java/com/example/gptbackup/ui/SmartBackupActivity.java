@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.gptbackup.R;
 import com.example.gptbackup.adapter.SmartFileAdapter;
 import com.example.gptbackup.ai.FilePriorityEngine;
+import com.example.gptbackup.backup.UploadForegroundService;
 import com.example.gptbackup.backup.UploadManager;
 import com.example.gptbackup.db.BackupDatabase;
 import com.example.gptbackup.db.BackupFileDao;
@@ -21,6 +22,7 @@ import com.example.gptbackup.db.BackupFileEntity;
 import com.example.gptbackup.model.FileModel;
 import com.example.gptbackup.model.UploadState;
 import com.example.gptbackup.scanner.FileScanner;
+import com.example.gptbackup.scanner.MediaStoreLoader;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
@@ -228,12 +230,25 @@ public class SmartBackupActivity extends AppCompatActivity
     private void loadFilesAsync() {
         new Thread(() -> {
             FilePriorityEngine engine = new FilePriorityEngine(this);
-            List<FileModel> scanned = new FileScanner().scanAllFiles(true);
+            List<FileModel> scanned = new ArrayList<>();
+
+// 1️⃣ MediaStore (Gallery – FULL & CORRECT)
+            scanned.addAll(MediaStoreLoader.loadImages(this));
+            scanned.addAll(MediaStoreLoader.loadVideos(this));
+
+// 2️⃣ File system (Docs, Audio, Apps only)
+            List<FileModel> fsFiles = new FileScanner().scanAllFiles(true);
+            for (FileModel f : fsFiles) {
+                if (f.isImage() || f.isVideo()) continue; // prevent duplicates
+                scanned.add(f);
+            }
+
             engine.assignPriorities(scanned, this);
 
             List<FileModel> finalList = new ArrayList<>();
 
             for (FileModel f : scanned) {
+                if ("other".equals(f.getType())) continue;
 
                 if (!includeAppMedia && isAppMedia(f)) continue;
                 if (isThumbnailFile(f)) continue;
@@ -301,6 +316,7 @@ public class SmartBackupActivity extends AppCompatActivity
     }
 
     private void startBackup() {
+
         if (currentAccount == null) {
             Toast.makeText(this, "Sign in first", Toast.LENGTH_SHORT).show();
             return;
@@ -316,10 +332,27 @@ public class SmartBackupActivity extends AppCompatActivity
             return;
         }
 
-        uploadManager = new UploadManager(this, currentAccount, selected, this);
-        uploadOverlay.setVisibility(View.VISIBLE);
+        // 1️⃣ Start Foreground Service (keeps process alive)
+        Intent serviceIntent = new Intent(this, UploadForegroundService.class);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent);
+        } else {
+            startService(serviceIntent);
+        }
+
+        // 2️⃣ START UploadManager (THIS WAS MISSING ❗)
+        uploadManager = new UploadManager(
+                this,
+                currentAccount,
+                selected,
+                this   // Listener = SmartBackupActivity
+        );
+
         uploadManager.start();
+
+        Toast.makeText(this, "Backup started", Toast.LENGTH_SHORT).show();
     }
+
 
     private void hideOverlay() {
         uploadOverlay.setVisibility(View.GONE);
@@ -327,11 +360,15 @@ public class SmartBackupActivity extends AppCompatActivity
 
     @Override
     public void onFileProgress(FileModel file, int progress) {
-        progressUpload.setProgress(progress);
+        int index = filteredFiles.indexOf(file);
+        if (index != -1) adapter.notifyItemChanged(index);
     }
 
     @Override
-    public void onFileStateChanged(FileModel file, UploadState state) {}
+    public void onFileStateChanged(FileModel file, UploadState state) {
+        int index = filteredFiles.indexOf(file);
+        if (index != -1) adapter.notifyItemChanged(index);
+    }
 
     @Override
     public void onGlobalProgress(int completed, int total) {

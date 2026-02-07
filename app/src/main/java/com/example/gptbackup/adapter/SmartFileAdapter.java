@@ -9,6 +9,7 @@ import android.view.ViewGroup;
 import android.webkit.MimeTypeMap;
 import android.widget.CheckBox;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -19,17 +20,28 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
 import com.example.gptbackup.R;
 import com.example.gptbackup.model.FileModel;
+import com.example.gptbackup.model.UploadState;
 
 import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 public class SmartFileAdapter
         extends RecyclerView.Adapter<SmartFileAdapter.ViewHolder> {
 
     private final List<FileModel> files;
+    private boolean backupRunning = false;
 
     public SmartFileAdapter(List<FileModel> files) {
         this.files = files;
+    }
+
+    // 🔹 Called from Activity
+    public void setBackupRunning(boolean running) {
+        this.backupRunning = running;
+        notifyDataSetChanged();
     }
 
     @NonNull
@@ -49,16 +61,16 @@ public class SmartFileAdapter
 
         FileModel file = files.get(position);
         Context context = holder.itemView.getContext();
-
-        // -------- TEXT --------
-        holder.txtName.setText(file.getName());
-        holder.txtInfo.setText(getPriorityText(file.getPriority()));
-
         File realFile = new File(file.getPath());
 
-        // -------- PREVIEW / ICON --------
-        if (realFile.exists()
-                && !file.isDirectory()
+        // ================= FILE NAME =================
+        holder.txtName.setText(file.getName());
+
+        // ================= FILE INFO =================
+        holder.txtInfo.setText(buildInfoText(file));
+
+        // ================= PREVIEW =================
+        if (realFile.exists() && !file.isDirectory()
                 && (file.isImage() || file.isVideo())) {
 
             Glide.with(context)
@@ -66,19 +78,59 @@ public class SmartFileAdapter
                     .centerCrop()
                     .placeholder(R.drawable.ic_file_generic)
                     .into(holder.imgPreview);
-
         } else {
             holder.imgPreview.setImageResource(getFileIcon(file));
         }
 
-        // -------- CHECKBOX --------
+        // ================= CHECKBOX =================
         holder.checkSelect.setOnCheckedChangeListener(null);
         holder.checkSelect.setChecked(file.isSelected());
         holder.checkSelect.setOnCheckedChangeListener(
                 (buttonView, isChecked) -> file.setSelected(isChecked)
         );
 
-        // -------- OPEN FILE --------
+        // ================= UPLOAD CONTROLS =================
+
+        // Show controls ONLY when backup is running
+        holder.uploadControls.setVisibility(
+                backupRunning ? View.VISIBLE : View.GONE
+        );
+
+        // Reset all first (VERY IMPORTANT)
+        holder.btnPause.setVisibility(View.GONE);
+        holder.btnResume.setVisibility(View.GONE);
+        holder.btnCancel.setVisibility(View.GONE);
+
+        if (backupRunning) {
+            UploadState state = file.getUploadState();
+
+            if (state == UploadState.UPLOADING) {
+                holder.btnPause.setVisibility(View.VISIBLE);
+                holder.btnCancel.setVisibility(View.VISIBLE);
+            }
+            else if (state == UploadState.PAUSED) {
+                holder.btnResume.setVisibility(View.VISIBLE);
+                holder.btnCancel.setVisibility(View.VISIBLE);
+            }
+        }
+
+        // ================= BUTTON ACTIONS =================
+        holder.btnPause.setOnClickListener(v -> {
+            file.pauseByUser();
+            notifyItemChanged(position);
+        });
+
+        holder.btnResume.setOnClickListener(v -> {
+            file.resumeByUser();
+            notifyItemChanged(position);
+        });
+
+        holder.btnCancel.setOnClickListener(v -> {
+            file.cancelByUser();
+            notifyItemChanged(position);
+        });
+
+        // ================= OPEN FILE =================
         holder.itemView.setOnClickListener(v ->
                 openFileExternally(context, realFile)
         );
@@ -87,6 +139,56 @@ public class SmartFileAdapter
     @Override
     public int getItemCount() {
         return files.size();
+    }
+
+    // ================= INFO TEXT =================
+
+    private String buildInfoText(FileModel file) {
+
+        String type = file.getType() == null
+                ? "OTHER"
+                : file.getType().toUpperCase(Locale.US);
+
+        String size = formatSize(file.getSize());
+        String priority = getPriorityLabel(file.getPriority());
+        String date = formatDate(file.getLastModified());
+        String state = getUploadStateLabel(file.getUploadState());
+
+        return type + " • " + size + " • " + priority + " • " + date + " • " + state;
+    }
+
+    private String formatSize(long bytes) {
+        if (bytes <= 0) return "0 B";
+        float kb = bytes / 1024f;
+        float mb = kb / 1024f;
+
+        if (mb >= 1) return String.format(Locale.US, "%.1f MB", mb);
+        if (kb >= 1) return String.format(Locale.US, "%.1f KB", kb);
+        return bytes + " B";
+    }
+
+    private String formatDate(long millis) {
+        return new SimpleDateFormat("dd/MM/yy", Locale.US)
+                .format(new Date(millis));
+    }
+
+    private String getPriorityLabel(int priority) {
+        if (priority >= 70) return "HIGH";
+        if (priority >= 40) return "MEDIUM";
+        return "LOW";
+    }
+
+    private String getUploadStateLabel(UploadState state) {
+        if (state == null) return "PENDING";
+        switch (state) {
+            case UPLOADING: return "UPLOADING";
+            case PAUSED: return "PAUSED";
+            case COMPLETED: return "COMPLETED";
+            case FAILED: return "FAILED";
+            case SKIPPED: return "SKIPPED";
+            case CANCELED: return "CANCELED";
+            default: return "PENDING";
+        }
     }
 
     // ================= FILE OPEN =================
@@ -115,11 +217,9 @@ public class SmartFileAdapter
             context.startActivity(Intent.createChooser(intent, "Open with"));
 
         } catch (Exception e) {
-            Toast.makeText(
-                    context,
+            Toast.makeText(context,
                     "No app found to open this file",
-                    Toast.LENGTH_SHORT
-            ).show();
+                    Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -130,13 +230,7 @@ public class SmartFileAdapter
                 .getMimeTypeFromExtension(ext.toLowerCase());
     }
 
-    // ================= HELPERS =================
-
-    private String getPriorityText(int priority) {
-        if (priority >= 70) return "Priority: HIGH";
-        if (priority >= 40) return "Priority: MEDIUM";
-        return "Priority: LOW";
-    }
+    // ================= ICON =================
 
     private int getFileIcon(FileModel file) {
         if (file.isDirectory()) return R.drawable.ic_folder;
@@ -151,8 +245,10 @@ public class SmartFileAdapter
     static class ViewHolder extends RecyclerView.ViewHolder {
 
         ImageView imgPreview;
+        ImageView btnPause, btnResume, btnCancel;
         TextView txtName, txtInfo;
         CheckBox checkSelect;
+        LinearLayout uploadControls;
 
         ViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -161,6 +257,12 @@ public class SmartFileAdapter
             txtName = itemView.findViewById(R.id.txtName);
             txtInfo = itemView.findViewById(R.id.txtInfo);
             checkSelect = itemView.findViewById(R.id.checkSelect);
+
+            btnPause = itemView.findViewById(R.id.btnPause);
+            btnResume = itemView.findViewById(R.id.btnResume);
+            btnCancel = itemView.findViewById(R.id.btnCancel);
+
+            uploadControls = itemView.findViewById(R.id.upl);
         }
     }
 }
