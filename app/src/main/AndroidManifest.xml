@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.GET_ACCOUNTS"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
 
     <application
@@ -27,11 +28,6 @@
             android:name=".backup.UploadForegroundService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
-        <service
-            android:name=".backup.UploadForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
 
         <!-- 🔹 SMART BACKUP = MAIN / LAUNCHER ACTIVITY -->
         <activity
@@ -42,6 +38,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="false"
+            android:label="@string/title_settings" />
 
         <!-- 🔹 FILE MANAGER = SECONDARY ACTIVITY -->
         <activity

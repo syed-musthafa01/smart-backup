@@ -1,5 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <!-- INDUSTRIAL GRADE PURE WHITE PALETTE -->
+    <color name="primary">#0E47A1</color>
+    <color name="primary_variant">#0B377A</color>
+    <color name="primary_dark">#0B377A</color>
+    <color name="on_primary">#FFFFFF</color>
+
+    <color name="secondary">#FF5252</color>
+    <color name="secondary_variant">#D50000</color>
+    <color name="on_secondary">#FFFFFF</color>
+
+    <!-- Backgrounds & Surfaces -->
+    <color name="background_light">#F5F5F7</color>
+    <color name="background_white">#FFFFFF</color>
+    <color name="surface_white">#FFFFFF</color>
+    <color name="surface_light">#EAECEE</color>
+    <color name="surface_muted">#CFD8DC</color>
+
+    <!-- UI Elements -->
+    <color name="divider">#E0E0E0</color>
+    <color name="stroke_color">#D0D4DC</color>
+
+    <!-- Status Colors -->
+    <color name="status_success">#00C853</color>
+    <color name="status_warning">#FFAB00</color>
+    <color name="status_error">#D50000</color>
+
+    <!-- Priority Colors -->
+    <color name="priority_high">#D50000</color>
+    <color name="priority_medium">#FFAB00</color>
+    <color name="priority_low">#00C853</color>
+
+    <!-- Typography -->
+    <color name="text_primary">#1C2833</color>
+    <color name="text_secondary">#566573</color>
+    <color name="text_black">#000000</color>
+    <color name="text_hint">#ABB2B9</color>
+
+    <color name="black">#000000</color>
+    <color name="white">#FFFFFF</color>
+
+    <!-- Filter Specific Colors -->
+    <color name="filter_active_bg">#1F6FE5</color>
+    <color name="filter_inactive_bg">#E9ECF1</color>
+    <color name="filter_active_text">#FFFFFF</color>
+    <color name="filter_inactive_text">#4B5563</color>
 </resources>

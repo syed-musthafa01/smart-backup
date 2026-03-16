@@ -1,5 +1,7 @@
 package com.example.gptbackup.model;
 
+import android.net.Uri;
+
 import com.example.gptbackup.backup.DriveRestUploader;
 
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -8,6 +10,8 @@ public class FileModel {
 
     private String name;
     private String path;
+    private Uri contentUri;
+    private boolean fromMediaStore = false;
     private long size;
     private String type;
     private boolean isDirectory;
@@ -15,7 +19,7 @@ public class FileModel {
     private long lastModified;
     private int accessCount;
 
-    private boolean selected = true;
+    private boolean selected = false; // ✅ Changed to false as requested
     private int priority = -1;
 
     private UploadState uploadState = UploadState.IDLE;
@@ -166,7 +170,17 @@ public class FileModel {
     public AtomicBoolean getPausedFlag() {
         return pausedByUser;
     }
+    public Uri getContentUri() { return contentUri; }
+    public void setContentUri(Uri contentUri) {
+        this.contentUri = contentUri;
+    }
 
+    public boolean isFromMediaStore() {
+        return fromMediaStore;
+    }
+    public void setFromMediaStore(boolean fromMediaStore) {
+        this.fromMediaStore = fromMediaStore;
+    }
     // ---- Setters / Controls ----
 
     public void setUploading(boolean uploading) {

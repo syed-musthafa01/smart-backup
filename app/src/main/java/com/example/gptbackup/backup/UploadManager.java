@@ -39,7 +39,6 @@ public class UploadManager {
     private final GoogleSignInAccount account;
     private final Listener listener;
 
-    // ✅ PARALLEL UPLOADS (3 at a time)
     private final ExecutorService executor =
             Executors.newFixedThreadPool(3);
 
@@ -90,14 +89,12 @@ public class UploadManager {
 
                 if (globalCanceled.get()) return;
 
-                // USER canceled before start
                 if (file.isCanceledByUser()) {
                     updateState(file, UploadState.CANCELED);
                     notifyDone(completed.incrementAndGet(), total);
                     return;
                 }
 
-                // WAIT FOR PAUSE
                 while ((globalPaused.get() || file.isPausedByUser())
                         && !file.isCanceledByUser()
                         && !globalCanceled.get()) {
@@ -110,9 +107,12 @@ public class UploadManager {
                     return;
                 }
 
+                // 🔥 SAFE PATH (CRITICAL FIX)
+                String safePath = buildSafePath(file);
+
                 // DUPLICATE CHECK
                 BackupFileEntity record =
-                        backupDao.getByPath(file.getPath());
+                        backupDao.getByPath(safePath);
 
                 if (record != null) {
                     boolean unchanged =
@@ -126,7 +126,6 @@ public class UploadManager {
                     }
                 }
 
-                // START UPLOAD
                 file.setUploading(true);
                 updateState(file, UploadState.UPLOADING);
 
@@ -144,7 +143,6 @@ public class UploadManager {
 
                 file.setUploadHandle(handle);
 
-                // WAIT FOR COMPLETION
                 while (!file.isCanceledByUser()
                         && !globalCanceled.get()
                         && file.getUploadProgress() < 100) {
@@ -153,9 +151,9 @@ public class UploadManager {
 
                 file.setUploading(false);
 
-                // FINAL STATE
                 if (file.isCanceledByUser()) {
-                    handle.cancel(); // 🔥 REAL CANCEL
+
+                    handle.cancel();
                     updateState(file, UploadState.CANCELED);
 
                 } else if (file.getUploadProgress() >= 100) {
@@ -163,7 +161,7 @@ public class UploadManager {
                     updateState(file, UploadState.COMPLETED);
 
                     BackupFileEntity entity = new BackupFileEntity();
-                    entity.path = file.getPath();
+                    entity.path = safePath;   // 🔥 FIX APPLIED HERE
                     entity.driveFileId = file.getDriveFileId();
                     entity.lastUploadedTime = System.currentTimeMillis();
                     entity.uploadedFileSize = file.getSize();
@@ -178,6 +176,25 @@ public class UploadManager {
                 notifyDone(completed.incrementAndGet(), total);
             });
         }
+    }
+
+    // ================= SAFE PATH BUILDER =================
+
+    /**
+     * Guarantees non-null primary key for Room.
+     * Does NOT change existing behavior for real files.
+     */
+    private String buildSafePath(FileModel file) {
+
+        if (file.getPath() != null && !file.getPath().isEmpty()) {
+            return file.getPath();
+        }
+
+        if (file.isFromMediaStore() && file.getContentUri() != null) {
+            return "mediastore://" + file.getContentUri().toString();
+        }
+
+        return "unknown://" + file.getName();
     }
 
     // ================= GLOBAL CONTROLS =================

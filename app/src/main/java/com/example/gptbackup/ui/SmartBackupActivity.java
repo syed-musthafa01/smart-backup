@@ -3,14 +3,17 @@ package com.example.gptbackup.ui;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
-import android.widget.ProgressBar;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
 import com.example.gptbackup.R;
 import com.example.gptbackup.adapter.SmartFileAdapter;
 import com.example.gptbackup.ai.FilePriorityEngine;
@@ -27,8 +30,13 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.tasks.Task;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
+import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
+import com.google.android.material.progressindicator.LinearProgressIndicator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,26 +44,22 @@ import java.util.List;
 public class SmartBackupActivity extends AppCompatActivity
         implements UploadManager.Listener {
 
-    private boolean includeAppMedia = false;
     private static final int RC_SIGN_IN = 101;
 
     private enum FileTypeFilter {
-        ALL, IMAGES, VIDEOS, AUDIO, DOCUMENTS, APPS
+        ALL, PHOTOS, VIDEOS, AUDIO, FILES
     }
 
     private FileTypeFilter currentTypeFilter = FileTypeFilter.ALL;
 
     private TextView txtProgress, txtAccountStatus;
+    private ImageView imgAccount;
     private RecyclerView recyclerSmart;
-    private MaterialButton btnBackup, btnChangeAccount;
-    private Chip chipHigh, chipMedium, chipLow;
-
-    private MaterialButton btnAll, btnImages, btnVideos, btnAudio, btnDocs, btnApps;
-
-    private View uploadOverlay;
-    private ProgressBar progressUpload;
-    private TextView txtUploadInfo, txtFileCount;
-    private MaterialButton btnPause, btnResume, btnCancel;
+    private ExtendedFloatingActionButton btnBackup;
+    private MaterialButton btnChangeAccount, btnSelectAll;
+    private MaterialButton btnSettings, btnOpenFileManager; 
+    private ChipGroup chipGroupFilter;
+    private LinearProgressIndicator scanProgressBar;
 
     private final List<FileModel> allFiles = new ArrayList<>();
     private final List<FileModel> filteredFiles = new ArrayList<>();
@@ -66,6 +70,7 @@ public class SmartBackupActivity extends AppCompatActivity
     private GoogleSignInAccount currentAccount;
 
     private BackupFileDao backupFileDao;
+    private boolean isAllSelected = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -77,310 +82,299 @@ public class SmartBackupActivity extends AppCompatActivity
         bindViews();
         setupGoogle();
         setupRecycler();
-        setupChips();
-        setupTypeButtons();
+        setupFilterChips();
+        setupPriorityChips();
         loadFilesAsync();
 
-        btnChangeAccount.setOnClickListener(v -> openAccountChooser());
-        btnBackup.setOnClickListener(v -> startBackup());
+        if (btnChangeAccount != null) btnChangeAccount.setOnClickListener(v -> openAccountChooser());
+        if (imgAccount != null) imgAccount.setOnClickListener(v -> openAccountChooser());
+        if (btnBackup != null) btnBackup.setOnClickListener(v -> startBackup());
 
-        btnPause.setOnClickListener(v -> {
-            if (uploadManager != null) uploadManager.pause();
-        });
-
-        btnResume.setOnClickListener(v -> {
-            if (uploadManager != null) uploadManager.resume();
-        });
-
-        btnCancel.setOnClickListener(v -> {
-            if (uploadManager != null) uploadManager.cancel();
-            hideOverlay();
-        });
-
-        findViewById(R.id.btnOpenFileManager)
-                .setOnClickListener(v ->
-                        startActivity(new Intent(this, MainActivity.class)));
-    }
-
-    private boolean isAppMedia(FileModel file) {
-        String path = file.getPath().toLowerCase();
-        return path.contains("/android/media/")
-                || path.contains("/android/data/");
-    }
-
-    private boolean isThumbnailFile(FileModel file) {
-        String path = file.getPath().toLowerCase();
-        String name = file.getName().toLowerCase();
-
-        if (path.contains("/.thumbnails/")
-                || path.contains("/thumbnail/")
-                || path.contains("/thumb/")
-                || path.contains("/thumbs/")
-                || path.contains("/thumbcache/")
-                || path.contains("/.thumbdata/")
-                || path.contains("/microthumbnail/")
-                || path.contains("/.thumbnail/")) {
-            return true;
+        if (btnOpenFileManager != null) {
+            btnOpenFileManager.setOnClickListener(v ->
+                    startActivity(new Intent(this, MainActivity.class)));
         }
 
-        return name.contains("thumb")
-                || name.startsWith(".")
-                || name.endsWith("_thumb.jpg")
-                || name.endsWith("_thumb.png")
-                || name.endsWith(".thumbnail");
+        if (btnSettings != null) {
+            btnSettings.setOnClickListener(v -> 
+                    startActivity(new Intent(this, SettingsActivity.class)));
+        }
+
+        if (btnSelectAll != null) {
+            btnSelectAll.setOnClickListener(v -> {
+                isAllSelected = !isAllSelected;
+                adapter.selectAll(isAllSelected);
+                btnSelectAll.setText(isAllSelected ? "Deselect All" : "Select All");
+            });
+        }
+
+        setupScrollBehavior();
+    }
+
+    private void setupScrollBehavior() {
+        if (recyclerSmart == null || btnBackup == null) return;
+        
+        recyclerSmart.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
+                super.onScrollStateChanged(recyclerView, newState);
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    btnBackup.extend();
+                } else if (newState == RecyclerView.SCROLL_STATE_DRAGGING || newState == RecyclerView.SCROLL_STATE_SETTLING) {
+                    btnBackup.shrink();
+                }
+            }
+        });
     }
 
     private void bindViews() {
         txtProgress = findViewById(R.id.txtProgress);
         txtAccountStatus = findViewById(R.id.txtAccountStatus);
+        imgAccount = findViewById(R.id.imgAccount);
         recyclerSmart = findViewById(R.id.recyclerSmart);
         btnBackup = findViewById(R.id.btnBackupHigh);
         btnChangeAccount = findViewById(R.id.btnChangeAccount);
-
-        chipHigh = findViewById(R.id.chipHigh);
-        chipMedium = findViewById(R.id.chipMedium);
-        chipLow = findViewById(R.id.chipLow);
-
-        btnAll = findViewById(R.id.btnAll);
-        btnImages = findViewById(R.id.btnImages);
-        btnVideos = findViewById(R.id.btnVideos);
-        btnAudio = findViewById(R.id.btnAudio);
-        btnDocs = findViewById(R.id.btnDocs);
-        btnApps = findViewById(R.id.btnApps);
-
-        uploadOverlay = findViewById(R.id.uploadOverlay);
-        progressUpload = findViewById(R.id.progressUpload);
-        txtUploadInfo = findViewById(R.id.txtUploadInfo);
-        txtFileCount = findViewById(R.id.txtFileCount);
-
-        btnPause = findViewById(R.id.btnPause);
-        btnResume = findViewById(R.id.btnResume);
-        btnCancel = findViewById(R.id.btnCancel);
+        btnSettings = findViewById(R.id.btnSettings);
+        btnOpenFileManager = findViewById(R.id.btnOpenFileManager);
+        scanProgressBar = findViewById(R.id.scanProgressBar);
+        chipGroupFilter = findViewById(R.id.chipGroupFilter);
+        btnSelectAll = findViewById(R.id.btnSelectAll);
     }
 
     private void setupRecycler() {
+        if (recyclerSmart == null) return;
         recyclerSmart.setLayoutManager(new LinearLayoutManager(this));
         adapter = new SmartFileAdapter(filteredFiles);
+        adapter.setSelectionListener(selectedCount -> {
+            if (btnSelectAll != null) {
+                btnSelectAll.setVisibility(selectedCount > 0 ? View.VISIBLE : View.GONE);
+                if (selectedCount == 0) isAllSelected = false;
+                btnSelectAll.setText(isAllSelected ? "Deselect All" : "Select All");
+            }
+        });
         recyclerSmart.setAdapter(adapter);
     }
 
     private void setupGoogle() {
-        GoogleSignInOptions gso =
-                new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                        .requestEmail()
-                        .build();
-
+        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestEmail()
+                .requestProfile()
+                .build();
         googleSignInClient = GoogleSignIn.getClient(this, gso);
         currentAccount = GoogleSignIn.getLastSignedInAccount(this);
+        updateAccountUi(currentAccount);
+    }
 
-        txtAccountStatus.setText(
-                currentAccount == null ? "Not signed in" : currentAccount.getEmail()
-        );
+    private void updateAccountUi(@Nullable GoogleSignInAccount account) {
+        if (account == null) {
+            if (txtAccountStatus != null) txtAccountStatus.setText("Not signed in");
+            if (imgAccount != null) {
+                imgAccount.setImageResource(R.drawable.ic_launcher_foreground);
+                imgAccount.setImageTintList(android.content.res.ColorStateList.valueOf(getResources().getColor(R.color.text_black)));
+            }
+        } else {
+            if (txtAccountStatus != null) txtAccountStatus.setText(account.getEmail());
+            if (imgAccount != null) {
+                if (account.getPhotoUrl() != null) {
+                    imgAccount.setImageTintList(null);
+                    Glide.with(this)
+                            .load(account.getPhotoUrl())
+                            .circleCrop()
+                            .into(imgAccount);
+                } else {
+                    imgAccount.setImageResource(R.drawable.ic_launcher_foreground);
+                    imgAccount.setImageTintList(android.content.res.ColorStateList.valueOf(getResources().getColor(R.color.text_black)));
+                }
+            }
+        }
     }
 
     private void openAccountChooser() {
+        if (googleSignInClient == null) return;
+        if (txtAccountStatus != null) txtAccountStatus.setText("Signing out...");
+        
         googleSignInClient.signOut().addOnCompleteListener(task -> {
             currentAccount = null;
-            txtAccountStatus.setText("Not signed in");
-            startActivityForResult(
-                    googleSignInClient.getSignInIntent(),
-                    RC_SIGN_IN
-            );
+            updateAccountUi(null);
+            startActivityForResult(googleSignInClient.getSignInIntent(), RC_SIGN_IN);
         });
     }
 
-    private void setupChips() {
-        chipHigh.setOnClickListener(v -> filter(70, 100));
-        chipMedium.setOnClickListener(v -> filter(40, 69));
-        chipLow.setOnClickListener(v -> filter(0, 39));
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == RC_SIGN_IN) {
+            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
+            handleSignInResult(task);
+        }
     }
 
-    private void setupTypeButtons() {
-        btnAll.setOnClickListener(v -> {
-            currentTypeFilter = FileTypeFilter.ALL;
-            applyTypeFilter();
-        });
+    private void handleSignInResult(Task<GoogleSignInAccount> completedTask) {
+        try {
+            currentAccount = completedTask.getResult(ApiException.class);
+            updateAccountUi(currentAccount);
+            Toast.makeText(this, "Welcome " + currentAccount.getEmail(), Toast.LENGTH_SHORT).show();
+        } catch (ApiException e) {
+            updateAccountUi(null);
+            Toast.makeText(this, "Sign in failed: " + e.getStatusCode(), Toast.LENGTH_SHORT).show();
+        }
+    }
 
-        btnImages.setOnClickListener(v -> {
-            currentTypeFilter = FileTypeFilter.IMAGES;
+    private void setupFilterChips() {
+        if (chipGroupFilter == null) return;
+        
+        chipGroupFilter.setOnCheckedStateChangeListener((group, checkedIds) -> {
+            if (checkedIds.isEmpty()) return;
+            int checkedId = checkedIds.get(0);
+            
+            if (checkedId == R.id.chipAll) currentTypeFilter = FileTypeFilter.ALL;
+            else if (checkedId == R.id.chipPhotos) currentTypeFilter = FileTypeFilter.PHOTOS;
+            else if (checkedId == R.id.chipVideos) currentTypeFilter = FileTypeFilter.VIDEOS;
+            else if (checkedId == R.id.chipAudio) currentTypeFilter = FileTypeFilter.AUDIO;
+            else if (checkedId == R.id.chipFiles) currentTypeFilter = FileTypeFilter.FILES;
+            
             applyTypeFilter();
         });
+    }
 
-        btnVideos.setOnClickListener(v -> {
-            currentTypeFilter = FileTypeFilter.VIDEOS;
-            applyTypeFilter();
-        });
-
-        btnAudio.setOnClickListener(v -> {
-            currentTypeFilter = FileTypeFilter.AUDIO;
-            applyTypeFilter();
-        });
-
-        btnDocs.setOnClickListener(v -> {
-            currentTypeFilter = FileTypeFilter.DOCUMENTS;
-            applyTypeFilter();
-        });
-
-        btnApps.setOnClickListener(v -> {
-            currentTypeFilter = FileTypeFilter.APPS;
-            applyTypeFilter();
-        });
+    private void setupPriorityChips() {
+        Chip high = findViewById(R.id.chipHigh);
+        Chip med = findViewById(R.id.chipMedium);
+        Chip low = findViewById(R.id.chipLow);
+        
+        if (high != null) high.setOnClickListener(v -> filterPriority(70, 100));
+        if (med != null) med.setOnClickListener(v -> filterPriority(40, 69));
+        if (low != null) low.setOnClickListener(v -> filterPriority(0, 39));
     }
 
     private void loadFilesAsync() {
+        if (scanProgressBar != null) scanProgressBar.setVisibility(View.VISIBLE);
+        if (txtProgress != null) txtProgress.setText("Scanning device...");
+
         new Thread(() -> {
             FilePriorityEngine engine = new FilePriorityEngine(this);
             List<FileModel> scanned = new ArrayList<>();
-
-// 1️⃣ MediaStore (Gallery – FULL & CORRECT)
             scanned.addAll(MediaStoreLoader.loadImages(this));
             scanned.addAll(MediaStoreLoader.loadVideos(this));
-
-// 2️⃣ File system (Docs, Audio, Apps only)
             List<FileModel> fsFiles = new FileScanner().scanAllFiles(true);
-            for (FileModel f : fsFiles) {
-                if (f.isImage() || f.isVideo()) continue; // prevent duplicates
-                scanned.add(f);
-            }
-
+            for (FileModel f : fsFiles) { if (!f.isImage() && !f.isVideo()) scanned.add(f); }
             engine.assignPriorities(scanned, this);
-
+            
             List<FileModel> finalList = new ArrayList<>();
-
             for (FileModel f : scanned) {
                 if ("other".equals(f.getType())) continue;
-
-                if (!includeAppMedia && isAppMedia(f)) continue;
-                if (isThumbnailFile(f)) continue;
                 if (f.isDirectory()) continue;
-
-                BackupFileEntity record = backupFileDao.getByPath(f.getPath());
-
-                if (record != null) {
-                    boolean unchanged =
-                            record.lastUploadedTime >= f.getLastModified()
-                                    && record.uploadedFileSize == f.getSize();
-                    if (unchanged) continue;
+                
+                String path = f.getPath();
+                if (path != null) {
+                    BackupFileEntity record = backupFileDao.getByPath(path);
+                    if (record != null) {
+                        if (record.lastUploadedTime >= f.getLastModified() && record.uploadedFileSize == f.getSize()) continue;
+                    }
                 }
-
-                f.setSelected(false);
+                f.setSelected(false); 
                 finalList.add(f);
             }
 
             runOnUiThread(() -> {
                 allFiles.clear();
-                filteredFiles.clear();
                 allFiles.addAll(finalList);
-                applyTypeFilter();
-                txtProgress.setText("Smart files ready");
+                if (scanProgressBar != null) scanProgressBar.setVisibility(View.GONE);
+                if (txtProgress != null) txtProgress.setText("Discovering files...");
+                
+                staggeredAdd(finalList);
             });
+        }).start();
+    }
 
+    private void staggeredAdd(List<FileModel> list) {
+        new Thread(() -> {
+            for (int i = 0; i < list.size(); i++) {
+                FileModel f = list.get(i);
+                int finalI = i;
+                runOnUiThread(() -> {
+                    if (currentTypeFilter == FileTypeFilter.ALL) {
+                        filteredFiles.add(f);
+                        adapter.notifyItemInserted(filteredFiles.size() - 1);
+                    }
+                    if (finalI == list.size() - 1) {
+                        if (txtProgress != null) txtProgress.setText(list.size() + " files found");
+                        if (currentTypeFilter != FileTypeFilter.ALL) applyTypeFilter();
+                    }
+                });
+                try { Thread.sleep(20); } catch (InterruptedException ignored) {}
+            }
         }).start();
     }
 
     private void applyTypeFilter() {
         filteredFiles.clear();
-
         for (FileModel f : allFiles) {
             switch (currentTypeFilter) {
-                case IMAGES:
-                    if (f.isImage()) filteredFiles.add(f);
-                    break;
-                case VIDEOS:
-                    if (f.isVideo()) filteredFiles.add(f);
-                    break;
-                case AUDIO:
-                    if (f.isAudio()) filteredFiles.add(f);
-                    break;
-                case DOCUMENTS:
-                    if (f.isDocument()) filteredFiles.add(f);
-                    break;
-                case APPS:
-                    if (f.isAppFile()) filteredFiles.add(f);
-                    break;
-                default:
-                    filteredFiles.add(f);
+                case PHOTOS: if (f.isImage()) filteredFiles.add(f); break;
+                case VIDEOS: if (f.isVideo()) filteredFiles.add(f); break;
+                case AUDIO: if (f.isAudio()) filteredFiles.add(f); break;
+                case FILES: if (f.isDocument()) filteredFiles.add(f); break;
+                default: filteredFiles.add(f);
             }
         }
-        adapter.notifyDataSetChanged();
+        if (adapter != null) adapter.notifyDataSetChanged();
     }
 
-    private void filter(int min, int max) {
+    private void filterPriority(int min, int max) {
         filteredFiles.clear();
         for (FileModel f : allFiles) {
-            if (f.getPriority() >= min && f.getPriority() <= max) {
-                filteredFiles.add(f);
-            }
+            if (f.getPriority() >= min && f.getPriority() <= max) filteredFiles.add(f);
         }
-        adapter.notifyDataSetChanged();
+        if (adapter != null) adapter.notifyDataSetChanged();
     }
 
     private void startBackup() {
-
         if (currentAccount == null) {
-            Toast.makeText(this, "Sign in first", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Please sign in first", Toast.LENGTH_SHORT).show();
             return;
         }
-
         List<FileModel> selected = new ArrayList<>();
-        for (FileModel f : allFiles) {
-            if (f.isSelected()) selected.add(f);
-        }
-
+        for (FileModel f : allFiles) { if (f.isSelected()) selected.add(f); }
         if (selected.isEmpty()) {
-            Toast.makeText(this, "No files selected", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Select files to backup", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 1️⃣ Start Foreground Service (keeps process alive)
         Intent serviceIntent = new Intent(this, UploadForegroundService.class);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent);
-        } else {
-            startService(serviceIntent);
-        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) startForegroundService(serviceIntent);
+        else startService(serviceIntent);
 
-        // 2️⃣ START UploadManager (THIS WAS MISSING ❗)
-        uploadManager = new UploadManager(
-                this,
-                currentAccount,
-                selected,
-                this   // Listener = SmartBackupActivity
-        );
-        adapter.setBackupRunning(true);
-    
-
+        uploadManager = new UploadManager(this, currentAccount, selected, this);
+        if (adapter != null) adapter.setBackupRunning(true);
         uploadManager.start();
-
-        Toast.makeText(this, "Backup started", Toast.LENGTH_SHORT).show();
     }
 
-
     private void hideOverlay() {
-        uploadOverlay.setVisibility(View.GONE);
+        // No-op as requested
     }
 
     @Override
     public void onFileProgress(FileModel file, int progress) {
         int index = filteredFiles.indexOf(file);
-        if (index != -1) adapter.notifyItemChanged(index);
+        if (index != -1 && adapter != null) adapter.notifyItemChanged(index);
     }
 
     @Override
     public void onFileStateChanged(FileModel file, UploadState state) {
         int index = filteredFiles.indexOf(file);
-        if (index != -1) adapter.notifyItemChanged(index);
+        if (index != -1 && adapter != null) adapter.notifyItemChanged(index);
     }
 
     @Override
     public void onGlobalProgress(int completed, int total) {
-        txtFileCount.setText(completed + " / " + total + " files uploaded");
-        txtUploadInfo.setText((completed * 100 / total) + "%");
+        if (txtProgress != null) txtProgress.setText("Backing up: " + completed + " / " + total);
     }
 
     @Override
     public void onCompleted() {
-        hideOverlay();
-        txtProgress.setText("Backup completed");
+        if (txtProgress != null) txtProgress.setText("All files secured");
+        if (adapter != null) adapter.setBackupRunning(false);
+        stopService(new Intent(this, UploadForegroundService.class));
     }
 }

@@ -9,6 +9,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -29,20 +30,15 @@ public class DriveRestUploader {
     private static final String DRIVE_SCOPE =
             "oauth2:https://www.googleapis.com/auth/drive.file";
 
-    // ================= CALLBACKS =================
-
     public interface ProgressCallback {
         void onProgress(int progress);
     }
 
-    /** ✅ Industrial upload control handle */
     public interface UploadHandle {
         void pause();
         void resume();
         void cancel();
     }
-
-    // ================= PUBLIC API =================
 
     public static UploadHandle uploadSingleFile(
             Context context,
@@ -52,7 +48,7 @@ public class DriveRestUploader {
     ) {
 
         AtomicBoolean canceled = new AtomicBoolean(false);
-        AtomicBoolean paused = new AtomicBoolean(false);
+        AtomicBoolean paused = fileModel.getPausedFlag();
         Object pauseLock = new Object();
 
         new Thread(() -> {
@@ -68,11 +64,25 @@ public class DriveRestUploader {
                 Map<String, String> folders =
                         ensureFolderStructure(client, accessToken);
 
-                File localFile = new File(fileModel.getPath());
+                File localFile = null;
+                String fileName;
+                long fileSize;
+
+                if (fileModel.getPath() != null && !fileModel.getPath().isEmpty()) {
+                    localFile = new File(fileModel.getPath());
+                    fileName = localFile.getName();
+                    fileSize = localFile.length();
+                } else if (fileModel.isFromMediaStore()) {
+                    fileName = fileModel.getName();
+                    fileSize = fileModel.getSize();
+                } else {
+                    throw new Exception("Invalid file source");
+                }
+
                 String parentId = resolveParentId(folders, fileModel);
 
                 String metadataJson =
-                        "{ \"name\": \"" + localFile.getName() + "\", " +
+                        "{ \"name\": \"" + fileName + "\", " +
                                 "\"mimeType\": \"application/octet-stream\", " +
                                 "\"parents\": [\"" + parentId + "\"] }";
 
@@ -81,19 +91,31 @@ public class DriveRestUploader {
                         MediaType.parse("application/json; charset=utf-8")
                 );
 
-                RequestBody fileBody = new ProgressRequestBody(
-                        localFile,
-                        MediaType.parse("application/octet-stream"),
-                        callback,
-                        canceled,
-                        fileModel.getPausedFlag()   // 👈 REQUIRED
-                );
+                RequestBody fileBody;
 
+                if (localFile != null) {
+                    fileBody = new ProgressRequestBody(
+                            localFile,
+                            MediaType.parse("application/octet-stream"),
+                            callback,
+                            canceled,
+                            paused
+                    );
+                } else {
+                    fileBody = new UriProgressRequestBody(
+                            context,
+                            fileModel,
+                            MediaType.parse("application/octet-stream"),
+                            callback,
+                            canceled,
+                            paused
+                    );
+                }
 
                 RequestBody requestBody = new MultipartBody.Builder()
                         .setType(MultipartBody.FORM)
                         .addFormDataPart("metadata", null, metadata)
-                        .addFormDataPart("file", localFile.getName(), fileBody)
+                        .addFormDataPart("file", fileName, fileBody)
                         .build();
 
                 Request request = new Request.Builder()
@@ -105,7 +127,7 @@ public class DriveRestUploader {
                 Response response = client.newCall(request).execute();
 
                 if (response.isSuccessful()) {
-                    Log.d(TAG, "Uploaded: " + localFile.getName());
+                    Log.d(TAG, "Uploaded: " + fileName);
                 } else {
                     Log.e(TAG, "Upload failed: " + response.code());
                 }
@@ -119,7 +141,6 @@ public class DriveRestUploader {
             }
         }).start();
 
-        // ========= CONTROL HANDLE =========
         return new UploadHandle() {
             @Override
             public void pause() {
@@ -128,30 +149,25 @@ public class DriveRestUploader {
 
             @Override
             public void resume() {
-                synchronized (pauseLock) {
-                    paused.set(false);
-                    pauseLock.notifyAll();
-                }
+                paused.set(false);
             }
 
             @Override
             public void cancel() {
                 canceled.set(true);
-                resume(); // unblock if paused
+                resume();
             }
         };
     }
 
-    // ================= PROGRESS BODY =================
+    // ================= FILE REQUEST BODY =================
 
-     private static class ProgressRequestBody extends RequestBody {
+    private static class ProgressRequestBody extends RequestBody {
 
         private final File file;
         private final MediaType contentType;
         private final ProgressCallback callback;
         private final AtomicBoolean canceled;
-
-        // 🔹 NEW: pause control (from FileModel)
         private final AtomicBoolean paused;
 
         ProgressRequestBody(File file,
@@ -188,16 +204,12 @@ public class DriveRestUploader {
                 long read;
                 while ((read = source.read(sink.getBuffer(), 8 * 1024)) != -1) {
 
-                    // 🔴 HARD CANCEL
                     if (canceled.get()) {
                         throw new IOException("Upload canceled");
                     }
 
-                    // ⏸ PAUSE (BLOCK THREAD SAFELY)
                     while (paused.get()) {
-                        try {
-                            Thread.sleep(200);
-                        } catch (InterruptedException ignored) {}
+                        try { Thread.sleep(200); } catch (InterruptedException ignored) {}
                     }
 
                     uploaded += read;
@@ -212,6 +224,80 @@ public class DriveRestUploader {
         }
     }
 
+    // ================= URI REQUEST BODY (MediaStore) =================
+
+    private static class UriProgressRequestBody extends RequestBody {
+
+        private final Context context;
+        private final FileModel fileModel;
+        private final MediaType contentType;
+        private final ProgressCallback callback;
+        private final AtomicBoolean canceled;
+        private final AtomicBoolean paused;
+
+        UriProgressRequestBody(Context context,
+                               FileModel fileModel,
+                               MediaType contentType,
+                               ProgressCallback callback,
+                               AtomicBoolean canceled,
+                               AtomicBoolean paused) {
+
+            this.context = context;
+            this.fileModel = fileModel;
+            this.contentType = contentType;
+            this.callback = callback;
+            this.canceled = canceled;
+            this.paused = paused;
+        }
+
+        @Override
+        public MediaType contentType() {
+            return contentType;
+        }
+
+        @Override
+        public long contentLength() {
+            return fileModel.getSize();
+        }
+
+        @Override
+        public void writeTo(BufferedSink sink) throws IOException {
+
+            long length = contentLength();
+            long uploaded = 0;
+
+            InputStream inputStream =
+                    context.getContentResolver()
+                            .openInputStream(fileModel.getContentUri());
+
+            if (inputStream == null) {
+                throw new IOException("Unable to open input stream");
+            }
+
+            try (Source source = Okio.source(inputStream)) {
+
+                long read;
+                while ((read = source.read(sink.getBuffer(), 8 * 1024)) != -1) {
+
+                    if (canceled.get()) {
+                        throw new IOException("Upload canceled");
+                    }
+
+                    while (paused.get()) {
+                        try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+                    }
+
+                    uploaded += read;
+                    sink.flush();
+
+                    if (callback != null && length > 0) {
+                        int progress = (int) ((uploaded * 100) / length);
+                        callback.onProgress(progress);
+                    }
+                }
+            }
+        }
+    }
 
     // ================= FOLDER LOGIC (UNCHANGED) =================
 

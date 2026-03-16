@@ -1,0 +1,30 @@
+<resources>
+    <string name="title_settings">Settings</string>
+
+    <!-- Backup Behavior -->
+    <string name="header_backup_behavior">Backup Behavior</string>
+    <string name="pref_auto_backup">Enable Auto Backup</string>
+    <string name="pref_auto_backup_summary">Automatically back up files based on priority</string>
+    <string name="pref_high_priority_only">Backup Only High Priority Files</string>
+    <string name="pref_background_upload">Allow Background Upload</string>
+    <string name="pref_show_notification">Show Upload Notification</string>
+
+    <!-- File Filtering -->
+    <string name="header_file_filtering">File Filtering Preferences</string>
+    <string name="pref_min_priority">Minimum Priority</string>
+    <string name="pref_max_file_limit">Maximum File Limit</string>
+    <string name="pref_include_images">Include Images</string>
+    <string name="pref_include_documents">Include Documents</string>
+    <string name="pref_include_videos">Include Videos</string>
+
+    <!-- Network -->
+    <string name="header_network">Network Settings</string>
+    <string name="pref_wifi_only">Upload on WiFi Only</string>
+    <string name="pref_mobile_data">Allow Mobile Data</string>
+    <string name="pref_only_charging">Upload only while charging</string>
+
+    <!-- Performance -->
+    <string name="header_performance">Performance Settings</string>
+    <string name="pref_smart_optimization">Enable Smart Optimization</string>
+    <string name="pref_unlimited_concurrent">Unlimited concurrent uploads</string>
+</resources>

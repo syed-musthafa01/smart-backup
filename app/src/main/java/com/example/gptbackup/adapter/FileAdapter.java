@@ -62,121 +62,126 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
         holder.txtName.setText(file.getName());
         holder.txtMeta.setText(readableFileSize(file.getSize()));
 
-        /* ================= IMAGE / FILE PREVIEW ================= */
+        /* ================= PREVIEW ================= */
 
         if (file.isDirectory()) {
             holder.imgPreview.setImageResource(R.drawable.ic_folder);
         } else {
             String ext = file.getExtension().toLowerCase();
-
             if (ext.equals("jpg") || ext.equals("jpeg") || ext.equals("png") || ext.equals("webp")) {
-                Glide.with(holder.itemView.getContext())
-                        .load(realFile)
-                        .centerCrop()
-                        .override(100, 100)
-                        .placeholder(R.drawable.ic_image)
-                        .into(holder.imgPreview);
-
+                Glide.with(holder.itemView.getContext()).load(realFile).centerCrop().override(100, 100).placeholder(R.drawable.ic_image).into(holder.imgPreview);
             } else if (ext.equals("mp4") || ext.equals("mkv")) {
-                Glide.with(holder.itemView.getContext())
-                        .load(realFile)
-                        .frame(1_000_000)
-                        .centerCrop()
-                        .override(100, 100)
-                        .placeholder(R.drawable.ic_video)
-                        .into(holder.imgPreview);
-
+                Glide.with(holder.itemView.getContext()).load(realFile).frame(1_000_000).centerCrop().override(100, 100).placeholder(R.drawable.ic_video).into(holder.imgPreview);
             } else if (ext.equals("mp3") || ext.equals("wav")) {
                 holder.imgPreview.setImageResource(R.drawable.ic_audio);
             } else if (ext.equals("pdf")) {
                 holder.imgPreview.setImageResource(R.drawable.ic_document);
-            } else if (ext.equals("zip") || ext.equals("rar")) {
-                holder.imgPreview.setImageResource(R.drawable.ic_archive);
             } else {
                 holder.imgPreview.setImageResource(R.drawable.ic_file);
             }
         }
 
-        /* ================= PRIORITY CHIP ================= */
-
-        String priorityLabel;
-        if (file.getPriority() == 2) priorityLabel = "High";
-        else if (file.getPriority() == 1) priorityLabel = "Medium";
-        else if (file.getPriority() == 0) priorityLabel = "Low";
-        else priorityLabel = "Unscored";
-
+        /* ================= PRIORITY ================= */
+        String priorityLabel = file.getPriority() >= 70 ? "High" : (file.getPriority() >= 40 ? "Medium" : "Low");
         holder.chipPriority.setText(priorityLabel);
 
-        /* ================= UPLOAD STATE ================= */
-
+        /* ================= UPLOAD STATE & ROW ACTIONS ================= */
         UploadState state = file.getUploadState();
         holder.txtUploadState.setText(state.name());
 
-        if (state == UploadState.UPLOADING) {
-            holder.progressFile.setVisibility(View.VISIBLE);
+        boolean isBusy = (state == UploadState.UPLOADING || state == UploadState.PAUSED);
+
+        if (isBusy) {
+            holder.layoutFileProgress.setVisibility(View.VISIBLE);
             holder.progressFile.setProgress(file.getUploadProgress());
-        } else if (state == UploadState.COMPLETED
-                || state == UploadState.FAILED
-                || state == UploadState.CANCELED) {
-            holder.progressFile.setVisibility(View.GONE);
+            holder.txtFileProgressPercent.setText(file.getUploadProgress() + "%");
+            holder.chkSelect.setVisibility(View.INVISIBLE); // Hide checkbox during active upload
+
+            if (state == UploadState.PAUSED) {
+                holder.btnRowPause.setVisibility(View.GONE);
+                holder.btnRowResume.setVisibility(View.VISIBLE);
+            } else {
+                holder.btnRowPause.setVisibility(View.VISIBLE);
+                holder.btnRowResume.setVisibility(View.GONE);
+            }
         } else {
-            holder.progressFile.setVisibility(View.INVISIBLE);
+            holder.layoutFileProgress.setVisibility(View.GONE);
+            if (file.isSelected()) {
+                holder.chkSelect.setVisibility(View.VISIBLE);
+            } else {
+                holder.chkSelect.setVisibility(View.GONE);
+            }
         }
 
-        /* ================= CHECKBOX ================= */
-
+        /* ================= SELECTION (LONG PRESS) ================= */
         holder.chkSelect.setOnCheckedChangeListener(null);
         holder.chkSelect.setChecked(selectedFiles.contains(file));
-
-        holder.chkSelect.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (isChecked) {
-                if (!selectedFiles.contains(file)) selectedFiles.add(file);
-            } else {
-                selectedFiles.remove(file);
+        holder.chkSelect.setOnCheckedChangeListener((btn, checked) -> {
+            if (checked) { if (!selectedFiles.contains(file)) selectedFiles.add(file); }
+            else { 
+                selectedFiles.remove(file); 
+                holder.chkSelect.setVisibility(View.GONE);
             }
-            if (onFileClickListener != null) {
-                onFileClickListener.onSelectionChanged(selectedFiles.size());
-            }
+            if (onFileClickListener != null) onFileClickListener.onSelectionChanged(selectedFiles.size());
         });
 
-        /* ================= ITEM CLICK (FIXED) ================= */
+        holder.itemView.setOnLongClickListener(v -> {
+            if (!isBusy) {
+                holder.chkSelect.setVisibility(View.VISIBLE);
+                holder.chkSelect.setChecked(true);
+                if (!selectedFiles.contains(file)) selectedFiles.add(file);
+                if (onFileClickListener != null) onFileClickListener.onSelectionChanged(selectedFiles.size());
+            }
+            return true;
+        });
 
+        /* ================= ROW BUTTON LISTENERS ================= */
+        holder.btnRowPause.setOnClickListener(v -> {
+            file.pauseByUser();
+            notifyItemChanged(position);
+        });
+
+        holder.btnRowResume.setOnClickListener(v -> {
+            file.resumeByUser();
+            notifyItemChanged(position);
+        });
+
+        holder.btnRowCancel.setOnClickListener(v -> {
+            file.cancelByUser();
+            selectedFiles.remove(file);
+            notifyItemChanged(position);
+        });
+
+        /* ================= ITEM CLICK ================= */
         holder.itemView.setOnClickListener(v -> {
-
-            if (file.isDirectory()) {
-                // Folder navigation → MainActivity
-                if (onFileClickListener != null) {
-                    onFileClickListener.onFileClicked(file);
-                }
-            } else {
-                // File → external preview
+            if (file.isDirectory()) { 
+                if (onFileClickListener != null) onFileClickListener.onFileClicked(file); 
+            } else if (file.isSelected() && !isBusy) {
+                file.setSelected(false);
+                selectedFiles.remove(file);
+                notifyItemChanged(position);
+                if (onFileClickListener != null) onFileClickListener.onSelectionChanged(selectedFiles.size());
+            } else if (!isBusy) {
                 openExternally(v, file);
             }
         });
     }
 
     @Override
-    public int getItemCount() {
-        return fileList.size();
-    }
+    public int getItemCount() { return fileList.size(); }
 
-    public List<FileModel> getSelectedFiles() {
-        return new ArrayList<>(selectedFiles);
-    }
-
-    /* ================= VIEW HOLDER ================= */
+    public List<FileModel> getSelectedFiles() { return new ArrayList<>(selectedFiles); }
 
     static class ViewHolder extends RecyclerView.ViewHolder {
-
-        TextView txtName, txtMeta, txtUploadState;
+        TextView txtName, txtMeta, txtUploadState, txtFileProgressPercent;
         CheckBox chkSelect;
         ImageView imgPreview;
         Chip chipPriority;
         ProgressBar progressFile;
+        View layoutFileProgress, btnRowPause, btnRowResume, btnRowCancel;
 
         public ViewHolder(@NonNull View itemView) {
             super(itemView);
-
             txtName = itemView.findViewById(R.id.txtFileName);
             txtMeta = itemView.findViewById(R.id.txtMeta);
             txtUploadState = itemView.findViewById(R.id.txtUploadState);
@@ -184,58 +189,36 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
             imgPreview = itemView.findViewById(R.id.imgPreview);
             chipPriority = itemView.findViewById(R.id.chipPriority);
             progressFile = itemView.findViewById(R.id.progressFile);
+            layoutFileProgress = itemView.findViewById(R.id.layoutFileProgress);
+            txtFileProgressPercent = itemView.findViewById(R.id.txtFileProgressPercent);
+            btnRowPause = itemView.findViewById(R.id.btnRowPause);
+            btnRowResume = itemView.findViewById(R.id.btnRowResume);
+            btnRowCancel = itemView.findViewById(R.id.btnRowCancel);
         }
     }
-
-    /* ================= EXTERNAL OPEN ================= */
 
     private void openExternally(View view, FileModel file) {
         try {
             File realFile = new File(file.getPath());
-
-            Uri uri = FileProvider.getUriForFile(
-                    view.getContext(),
-                    view.getContext().getPackageName() + ".provider",
-                    realFile
-            );
-
+            Uri uri = FileProvider.getUriForFile(view.getContext(), view.getContext().getPackageName() + ".provider", realFile);
             Intent intent = new Intent(Intent.ACTION_VIEW);
             intent.setDataAndType(uri, getMimeType(file.getPath()));
-
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-
-            view.getContext().startActivity(
-                    Intent.createChooser(intent, "Open with")
-            );
-
+            view.getContext().startActivity(Intent.createChooser(intent, "Open with"));
         } catch (Exception e) {
-            Toast.makeText(
-                    view.getContext(),
-                    "No app found to open this file",
-                    Toast.LENGTH_SHORT
-            ).show();
+            Toast.makeText(view.getContext(), "No app found to open this file", Toast.LENGTH_SHORT).show();
         }
     }
+
     private String getMimeType(String path) {
-        String extension = android.webkit.MimeTypeMap
-                .getFileExtensionFromUrl(path);
-
-        if (extension != null) {
-            return android.webkit.MimeTypeMap
-                    .getSingleton()
-                    .getMimeTypeFromExtension(extension.toLowerCase());
-        }
-        return "*/*";
+        String ext = android.webkit.MimeTypeMap.getFileExtensionFromUrl(path);
+        return ext != null ? android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext.toLowerCase()) : "*/*";
     }
-
-    /* ================= FILE SIZE ================= */
 
     private String readableFileSize(long size) {
         if (size <= 0) return "0 B";
         final String[] units = new String[]{"B", "KB", "MB", "GB", "TB"};
         int digitGroups = (int) (Math.log10(size) / Math.log10(1024));
-        return String.format("%.1f %s",
-                size / Math.pow(1024, digitGroups),
-                units[digitGroups]);
+        return String.format("%.1f %s", size / Math.pow(1024, digitGroups), units[digitGroups]);
     }
 }

@@ -17,7 +17,9 @@ public class MediaStoreLoader {
         List<FileModel> list = new ArrayList<>();
 
         Uri uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+
         String[] projection = {
+                MediaStore.Images.Media._ID,
                 MediaStore.Images.Media.DISPLAY_NAME,
                 MediaStore.Images.Media.DATA,
                 MediaStore.Images.Media.SIZE,
@@ -29,14 +31,30 @@ public class MediaStoreLoader {
                 MediaStore.Images.Media.DATE_MODIFIED + " DESC");
 
         if (cursor != null) {
+            int idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
+            int nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME);
+            int dataCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+            int sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE);
+            int dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_MODIFIED);
+
             while (cursor.moveToNext()) {
+                long id = cursor.getLong(idCol);
+                Uri contentUri = Uri.withAppendedPath(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        String.valueOf(id)
+                );
+
                 FileModel f = new FileModel(
-                        cursor.getString(0),
-                        cursor.getString(1),
-                        cursor.getLong(2),
+                        cursor.getString(nameCol),
+                        cursor.getString(dataCol),
+                        cursor.getLong(sizeCol),
                         "image"
                 );
-                f.setLastModified(cursor.getLong(3) * 1000);
+
+                f.setLastModified(cursor.getLong(dateCol) * 1000);
+                f.setContentUri(contentUri);
+                f.setFromMediaStore(true);
+
                 list.add(f);
             }
             cursor.close();
@@ -49,6 +67,7 @@ public class MediaStoreLoader {
 
         Uri uri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
         String[] projection = {
+                MediaStore.Video.Media._ID,
                 MediaStore.Video.Media.DISPLAY_NAME,
                 MediaStore.Video.Media.DATA,
                 MediaStore.Video.Media.SIZE,
@@ -60,14 +79,28 @@ public class MediaStoreLoader {
                 MediaStore.Video.Media.DATE_MODIFIED + " DESC");
 
         if (cursor != null) {
+            int idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID);
+            int nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME);
+            int dataCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA);
+            int sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE);
+            int dateCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED);
+
             while (cursor.moveToNext()) {
+                long id = cursor.getLong(idCol);
+                Uri contentUri = Uri.withAppendedPath(
+                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                        String.valueOf(id)
+                );
+
                 FileModel f = new FileModel(
-                        cursor.getString(0),
-                        cursor.getString(1),
-                        cursor.getLong(2),
+                        cursor.getString(nameCol),
+                        cursor.getString(dataCol),
+                        cursor.getLong(sizeCol),
                         "video"
                 );
-                f.setLastModified(cursor.getLong(3) * 1000);
+                f.setLastModified(cursor.getLong(dateCol) * 1000);
+                f.setContentUri(contentUri);
+                f.setFromMediaStore(true);
                 list.add(f);
             }
             cursor.close();

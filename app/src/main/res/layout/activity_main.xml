@@ -2,219 +2,171 @@
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/background_light">
 
-    <!-- Top app bar with account + actions -->
+    <!-- Top Area -->
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnOpenSmart"
-            android:layout_width="wrap_content"
-            android:layout_height="40dp"
-            android:layout_margin="8dp"
-            android:text="Smart Backup"
-
-            android:textSize="14sp"
-            android:textAllCaps="false"
-
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minHeight="40dp"
-
-            app:cornerRadius="20dp"
-            app:icon="@drawable/ic_folder"
-            app:iconSize="18dp"
-            app:iconPadding="6dp"
-            app:iconGravity="textStart"
-
-            app:backgroundTint="?attr/colorSecondary"
-            android:textColor="@android:color/white"
-
-            style="@style/Widget.MaterialComponents.Button.TextButton"/>
-
-
-
-
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            android:background="?attr/colorPrimary"
-            android:theme="@style/ThemeOverlay.MaterialComponents.Dark.ActionBar"
-            app:title="@string/app_name"
-            app:navigationIcon="@drawable/ic_folder"
-            app:menu="@menu/menu_main" />
-
-        <!-- Account + system status row -->
-        <LinearLayout
-            android:id="@+id/layoutStatus"
+        android:layout_height="wrap_content"
+        android:background="@color/background_light"
+        app:elevation="0dp">
+        
+        <!-- Account card -->
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="8dp">
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="0dp"
+            app:strokeColor="@color/stroke_color"
+            app:strokeWidth="1dp"
+            app:cardBackgroundColor="@color/surface_light">
 
-            <!-- Account row -->
             <LinearLayout
+                android:id="@+id/layoutStatus"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:orientation="vertical"
+                android:padding="16dp">
 
-                <ImageView
-                    android:id="@+id/imgAccount"
-                    android:layout_width="32dp"
-                    android:layout_height="32dp"
-                    android:src="@mipmap/ic_launcher_round"
-                    android:contentDescription="@string/app_name"
-                    android:layout_marginEnd="8dp" />
-
-                <TextView
-                    android:id="@+id/txtAccountEmail"
-                    android:layout_width="0dp"
+                <!-- Account row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/account_not_signed_in"
-                    android:textAppearance="?attr/textAppearanceBody2" />
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnChangeAccount"
-                    style="@style/Widget.MaterialComponents.Button.TextButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/change" />
+                    <!-- Minimal Icon -->
+                    <ImageView
+                        android:id="@+id/imgAccount"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:src="@drawable/ic_launcher_foreground"
+                        app:tint="@color/text_black"
+                        android:contentDescription="Account"
+                        android:layout_marginEnd="16dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Connected Account"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="11sp"
+                            android:textAllCaps="true"
+                            android:letterSpacing="0.05" />
+                        <TextView
+                            android:id="@+id/txtAccountEmail"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/account_not_signed_in"
+                            android:textColor="@color/text_primary"
+                            android:textStyle="bold"
+                            android:textSize="16sp"
+                            android:ellipsize="end"
+                            android:maxLines="1" />
+                    </LinearLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnChangeAccount"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:stateListAnimator="@animator/button_scale_anim"
+                        android:text="Change"
+                        android:minWidth="0dp"
+                        android:paddingHorizontal="12dp" />
+                </LinearLayout>
+
+                <TextView android:id="@+id/txtBreadcrumb" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+                <com.google.android.material.chip.Chip android:id="@+id/chipWifi" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+                <com.google.android.material.chip.Chip android:id="@+id/chipBattery" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+
             </LinearLayout>
-
-            <!-- System status row -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="4dp">
-
-                <com.google.android.material.chip.Chip
-                    android:id="@+id/chipWifi"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/status_wifi_checking" />
-
-                <com.google.android.material.chip.Chip
-                    android:id="@+id/chipBattery"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:text="@string/status_battery_checking" />
-            </LinearLayout>
-
-            <!-- Breadcrumb path -->
-            <TextView
-                android:id="@+id/txtBreadcrumb"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:ellipsize="start"
-                android:maxLines="1"
-                android:text="@string/root_path_label"
-                android:textAppearance="?attr/textAppearanceCaption" />
-        </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- Main file list + global progress -->
+    <!-- Main file list -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:layout_marginBottom="72dp"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
-        <!-- Global upload progress -->
-        <LinearLayout
+        <!-- Global progress -->
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/layoutGlobalProgress"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="8dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp"
             android:visibility="gone">
-
-            <TextView
-                android:id="@+id/txtGlobalStatus"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/upload_preparing" />
-
-            <ProgressBar
-                android:id="@+id/progressGlobal"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="4dp"
-                android:indeterminate="false"
-                android:max="100"
-                android:progress="0" />
-        </LinearLayout>
+                android:orientation="vertical"
+                android:padding="16dp">
+                <TextView
+                    android:id="@+id/txtGlobalStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/upload_preparing"
+                    android:textColor="@color/text_primary"
+                    android:textStyle="bold" />
+                <ProgressBar
+                    android:id="@+id/progressGlobal"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="6dp"
+                    android:layout_marginTop="12dp"
+                    android:progressDrawable="@drawable/progress_gradient_horizontal"
+                    android:indeterminate="false"
+                    android:max="100"
+                    android:progress="0" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recyclerView"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:padding="4dp" />
+            android:layout_height="match_parent"
+            android:paddingHorizontal="12dp"
+            android:paddingTop="0dp"
+            android:paddingBottom="88dp"
+            android:clipToPadding="false"
+            android:overScrollMode="never" />
     </LinearLayout>
 
-    <!-- Bottom action bar -->
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/layoutBottomBar"
-        android:layout_width="match_parent"
-        android:layout_height="72dp"
-        android:layout_gravity="bottom"
-        android:elevation="8dp"
-        android:padding="8dp">
+    <!-- Backup FAB (Opposite side - bottom|end) -->
+    <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+        android:id="@+id/btnBackup"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16dp"
+        android:text="Backup"
+        android:textColor="@color/white"
+        android:textSize="12sp"
+        app:iconSize="20dp"
+        app:backgroundTint="@color/primary"
+        app:icon="@drawable/ic_archive"
+        app:iconTint="@color/white"
+        app:elevation="4dp"/>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/txtSelectionSummary"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/no_files_selected" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnPause"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/pause"
-                android:enabled="false" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnResume"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:text="@string/resume"
-                android:enabled="false" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnCancel"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:text="@string/cancel"
-                android:enabled="false" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnBackup"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="@string/start_backup" />
-        </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
+    <TextView android:id="@+id/txtSelectionSummary" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <View android:id="@+id/btnOpenSmart" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone"/>
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnPause" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnResume" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnCancel" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
