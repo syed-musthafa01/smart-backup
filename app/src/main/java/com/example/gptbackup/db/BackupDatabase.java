@@ -6,8 +6,8 @@ import androidx.room.Room;
 import androidx.room.RoomDatabase;
 
 @Database(
-        entities = {BackupFileEntity.class},
-        version = 2,            // ⬅️ INCREMENT VERSION
+        entities = {BackupFileEntity.class, BackupQueueEntity.class},
+        version = 4,            // ⬅️ INCREMENT VERSION
         exportSchema = false
 )
 public abstract class BackupDatabase extends RoomDatabase {
@@ -15,6 +15,7 @@ public abstract class BackupDatabase extends RoomDatabase {
     private static volatile BackupDatabase INSTANCE;
 
     public abstract BackupFileDao backupFileDao();
+    public abstract BackupQueueDao backupQueueDao();
 
     public static BackupDatabase getInstance(Context context) {
         if (INSTANCE == null) {

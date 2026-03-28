@@ -1,7 +1,12 @@
 package com.example.gptbackup.ui;
 
 import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.Settings;
+import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -17,6 +22,8 @@ import com.bumptech.glide.Glide;
 import com.example.gptbackup.R;
 import com.example.gptbackup.adapter.SmartFileAdapter;
 import com.example.gptbackup.ai.FilePriorityEngine;
+import com.example.gptbackup.ai.UserPreferenceManager;
+import com.example.gptbackup.backup.GoogleDriveSyncManager;
 import com.example.gptbackup.backup.UploadForegroundService;
 import com.example.gptbackup.backup.UploadManager;
 import com.example.gptbackup.db.BackupDatabase;
@@ -51,6 +58,9 @@ public class SmartBackupActivity extends AppCompatActivity
     }
 
     private FileTypeFilter currentTypeFilter = FileTypeFilter.ALL;
+    
+    private enum PriorityFilter { ALL, HIGH, MEDIUM, LOW }
+    private PriorityFilter currentPriorityFilter = PriorityFilter.ALL;
 
     private TextView txtProgress, txtAccountStatus;
     private ImageView imgAccount;
@@ -66,16 +76,26 @@ public class SmartBackupActivity extends AppCompatActivity
     private SmartFileAdapter adapter;
 
     private UploadManager uploadManager;
+    private GoogleDriveSyncManager syncManager;
+    private boolean isSyncing = false;
     private GoogleSignInClient googleSignInClient;
     private GoogleSignInAccount currentAccount;
 
     private BackupFileDao backupFileDao;
     private boolean isAllSelected = false;
+    private boolean storageLoaded = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_smart_backup);
+
+        // ── First-launch onboarding check ──
+        if (!UserPreferenceManager.isOnboardingComplete(this)) {
+            startActivity(new Intent(this, OnboardingActivity.class));
+            finish();
+            return;
+        }
 
         backupFileDao = BackupDatabase.getInstance(this).backupFileDao();
 
@@ -84,15 +104,26 @@ public class SmartBackupActivity extends AppCompatActivity
         setupRecycler();
         setupFilterChips();
         setupPriorityChips();
-        loadFilesAsync();
+
+        if (!hasFullStorageAccess()) {
+            requestFullStorageAccess();
+        } else {
+            storageLoaded = true;
+            loadFilesAsync();
+        }
+
+        com.example.gptbackup.backup.AutoBackupTriggerController.getInstance(this).applySettings();
 
         if (btnChangeAccount != null) btnChangeAccount.setOnClickListener(v -> openAccountChooser());
         if (imgAccount != null) imgAccount.setOnClickListener(v -> openAccountChooser());
         if (btnBackup != null) btnBackup.setOnClickListener(v -> startBackup());
 
         if (btnOpenFileManager != null) {
-            btnOpenFileManager.setOnClickListener(v ->
-                    startActivity(new Intent(this, MainActivity.class)));
+            btnOpenFileManager.setOnClickListener(v -> {
+                    Intent intent = new Intent(this, MainActivity.class);
+                    intent.setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                    startActivity(intent);
+            });
         }
 
         if (btnSettings != null) {
@@ -125,6 +156,29 @@ public class SmartBackupActivity extends AppCompatActivity
                 }
             }
         });
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (!storageLoaded && hasFullStorageAccess()) {
+            storageLoaded = true;
+            loadFilesAsync();
+        }
+    }
+
+    private boolean hasFullStorageAccess() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.R
+                || Environment.isExternalStorageManager();
+    }
+
+    private void requestFullStorageAccess() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Intent intent = new Intent(
+                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        }
     }
 
     private void bindViews() {
@@ -186,6 +240,28 @@ public class SmartBackupActivity extends AppCompatActivity
                     imgAccount.setImageTintList(android.content.res.ColorStateList.valueOf(getResources().getColor(R.color.text_black)));
                 }
             }
+            
+            // Trigger Drive Sync
+            syncManager = new GoogleDriveSyncManager(this, account);
+            isSyncing = true;
+            if (txtProgress != null) txtProgress.setText("Syncing metadata...");
+            syncManager.startSync(new GoogleDriveSyncManager.SyncCallback() {
+                @Override
+                public void onSuccess() {
+                    runOnUiThread(() -> {
+                        isSyncing = false;
+                        if (txtProgress != null) txtProgress.setText("Sync complete.");
+                    });
+                }
+                @Override
+                public void onError(Exception e) {
+                    runOnUiThread(() -> {
+                        isSyncing = false;
+                        if (txtProgress != null) txtProgress.setText("Sync failed.");
+                        Toast.makeText(SmartBackupActivity.this, "Drive Sync Failed", Toast.LENGTH_SHORT).show();
+                    });
+                }
+            });
         }
     }
 
@@ -233,18 +309,25 @@ public class SmartBackupActivity extends AppCompatActivity
             else if (checkedId == R.id.chipAudio) currentTypeFilter = FileTypeFilter.AUDIO;
             else if (checkedId == R.id.chipFiles) currentTypeFilter = FileTypeFilter.FILES;
             
-            applyTypeFilter();
+            applyFilters();
         });
     }
 
     private void setupPriorityChips() {
-        Chip high = findViewById(R.id.chipHigh);
-        Chip med = findViewById(R.id.chipMedium);
-        Chip low = findViewById(R.id.chipLow);
-        
-        if (high != null) high.setOnClickListener(v -> filterPriority(70, 100));
-        if (med != null) med.setOnClickListener(v -> filterPriority(40, 69));
-        if (low != null) low.setOnClickListener(v -> filterPriority(0, 39));
+        ChipGroup priorityGroup = findViewById(R.id.priorityChipGroup);
+        if (priorityGroup != null) {
+            priorityGroup.setOnCheckedStateChangeListener((group, checkedIds) -> {
+                if (checkedIds.isEmpty()) {
+                    currentPriorityFilter = PriorityFilter.ALL;
+                } else {
+                    int checkedId = checkedIds.get(0);
+                    if (checkedId == R.id.chipHigh) currentPriorityFilter = PriorityFilter.HIGH;
+                    else if (checkedId == R.id.chipMedium) currentPriorityFilter = PriorityFilter.MEDIUM;
+                    else if (checkedId == R.id.chipLow) currentPriorityFilter = PriorityFilter.LOW;
+                }
+                applyFilters();
+            });
+        }
     }
 
     private void loadFilesAsync() {
@@ -258,7 +341,11 @@ public class SmartBackupActivity extends AppCompatActivity
             scanned.addAll(MediaStoreLoader.loadVideos(this));
             List<FileModel> fsFiles = new FileScanner().scanAllFiles(true);
             for (FileModel f : fsFiles) { if (!f.isImage() && !f.isVideo()) scanned.add(f); }
+            if (txtProgress != null) {
+                runOnUiThread(() -> txtProgress.setText("Running AI analysis..."));
+            }
             engine.assignPriorities(scanned, this);
+            Log.d("SmartBackup", "AI analysis complete for " + scanned.size() + " files");
             
             List<FileModel> finalList = new ArrayList<>();
             for (FileModel f : scanned) {
@@ -280,51 +367,44 @@ public class SmartBackupActivity extends AppCompatActivity
                 allFiles.clear();
                 allFiles.addAll(finalList);
                 if (scanProgressBar != null) scanProgressBar.setVisibility(View.GONE);
-                if (txtProgress != null) txtProgress.setText("Discovering files...");
-                
-                staggeredAdd(finalList);
+                if (txtProgress != null) txtProgress.setText(finalList.size() + " files found");
+
+                filteredFiles.clear();
+                if (currentTypeFilter == FileTypeFilter.ALL && currentPriorityFilter == PriorityFilter.ALL) {
+                    filteredFiles.addAll(finalList);
+                } else {
+                    applyFilters();
+                    return;
+                }
+                if (adapter != null) adapter.notifyDataSetChanged();
             });
         }).start();
     }
 
-    private void staggeredAdd(List<FileModel> list) {
-        new Thread(() -> {
-            for (int i = 0; i < list.size(); i++) {
-                FileModel f = list.get(i);
-                int finalI = i;
-                runOnUiThread(() -> {
-                    if (currentTypeFilter == FileTypeFilter.ALL) {
-                        filteredFiles.add(f);
-                        adapter.notifyItemInserted(filteredFiles.size() - 1);
-                    }
-                    if (finalI == list.size() - 1) {
-                        if (txtProgress != null) txtProgress.setText(list.size() + " files found");
-                        if (currentTypeFilter != FileTypeFilter.ALL) applyTypeFilter();
-                    }
-                });
-                try { Thread.sleep(20); } catch (InterruptedException ignored) {}
-            }
-        }).start();
-    }
-
-    private void applyTypeFilter() {
+    private void applyFilters() {
         filteredFiles.clear();
         for (FileModel f : allFiles) {
+            boolean matchesType = false;
             switch (currentTypeFilter) {
-                case PHOTOS: if (f.isImage()) filteredFiles.add(f); break;
-                case VIDEOS: if (f.isVideo()) filteredFiles.add(f); break;
-                case AUDIO: if (f.isAudio()) filteredFiles.add(f); break;
-                case FILES: if (f.isDocument()) filteredFiles.add(f); break;
-                default: filteredFiles.add(f);
+                case ALL: matchesType = true; break;
+                case PHOTOS: matchesType = f.isImage(); break;
+                case VIDEOS: matchesType = f.isVideo(); break;
+                case AUDIO: matchesType = f.isAudio(); break;
+                case FILES: matchesType = f.isDocument(); break;
             }
-        }
-        if (adapter != null) adapter.notifyDataSetChanged();
-    }
 
-    private void filterPriority(int min, int max) {
-        filteredFiles.clear();
-        for (FileModel f : allFiles) {
-            if (f.getPriority() >= min && f.getPriority() <= max) filteredFiles.add(f);
+            boolean matchesPriority = false;
+            int p = f.getPriority();
+            switch (currentPriorityFilter) {
+                case ALL: matchesPriority = true; break;
+                case HIGH: matchesPriority = (p >= 70 && p <= 100); break;
+                case MEDIUM: matchesPriority = (p >= 40 && p <= 69); break;
+                case LOW: matchesPriority = (p >= 0 && p <= 39); break;
+            }
+
+            if (matchesType && matchesPriority) {
+                filteredFiles.add(f);
+            }
         }
         if (adapter != null) adapter.notifyDataSetChanged();
     }
@@ -334,6 +414,18 @@ public class SmartBackupActivity extends AppCompatActivity
             Toast.makeText(this, "Please sign in first", Toast.LENGTH_SHORT).show();
             return;
         }
+        
+        if (isSyncing) {
+            Toast.makeText(this, "Please wait for sync to finish", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (syncManager == null) {
+            syncManager = new GoogleDriveSyncManager(this, currentAccount);
+            Toast.makeText(this, "Syncing metadata, please try again in a moment", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         List<FileModel> selected = new ArrayList<>();
         for (FileModel f : allFiles) { if (f.isSelected()) selected.add(f); }
         if (selected.isEmpty()) {
@@ -345,7 +437,7 @@ public class SmartBackupActivity extends AppCompatActivity
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) startForegroundService(serviceIntent);
         else startService(serviceIntent);
 
-        uploadManager = new UploadManager(this, currentAccount, selected, this);
+        uploadManager = new UploadManager(this, currentAccount, selected, this, syncManager);
         if (adapter != null) adapter.setBackupRunning(true);
         uploadManager.start();
     }

@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/white"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <!-- Progress bar -->
+        <ProgressBar
+            android:id="@+id/onboardingProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="8dp"
+            android:layout_marginBottom="32dp"
+            android:max="5"
+            android:progress="1"
+            android:progressTint="@color/primary" />
+
+        <!-- Titles -->
+        <TextView
+            android:id="@+id/txtOnboardingTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Setup"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_black"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/txtOnboardingSubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="14sp"
+            android:textColor="#757575"
+            android:layout_marginBottom="32dp" />
+
+        <!-- ===================== STEP 1: File Types ===================== -->
+        <LinearLayout
+            android:id="@+id/layoutStep1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/chipGroupFileTypes"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:singleSelection="false">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipTypePhotos"
+                    style="@style/Widget.MaterialComponents.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📷 Photos"
+                    android:checked="true" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipTypeVideos"
+                    style="@style/Widget.MaterialComponents.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🎬 Videos"
+                    android:checked="true" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipTypeDocuments"
+                    style="@style/Widget.MaterialComponents.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📄 Documents"
+                    android:checked="true" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipTypeAudio"
+                    style="@style/Widget.MaterialComponents.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🎵 Audio" />
+
+            </com.google.android.material.chip.ChipGroup>
+        </LinearLayout>
+
+        <!-- ===================== STEP 2: Screenshots ===================== -->
+        <LinearLayout
+            android:id="@+id/layoutStep2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <RadioGroup
+                android:id="@+id/radioGroupScreenshots"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <RadioButton
+                    android:id="@+id/radioScreenshotsAlways"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Yes — always back them up"
+                    android:layout_marginBottom="12dp"
+                    android:padding="8dp" />
+
+                <RadioButton
+                    android:id="@+id/radioScreenshotsNever"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="No — skip screenshots"
+                    android:checked="true"
+                    android:layout_marginBottom="12dp"
+                    android:padding="8dp" />
+
+            </RadioGroup>
+        </LinearLayout>
+
+        <!-- ===================== STEP 3: Camera ===================== -->
+        <LinearLayout
+            android:id="@+id/layoutStep3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Treat camera roll photos as HIGH priority"
+                    android:textSize="16sp"
+                    android:textColor="@color/text_black" />
+
+                <Switch
+                    android:id="@+id/switchCamera"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true" />
+
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ===================== STEP 4: Documents ===================== -->
+        <LinearLayout
+            android:id="@+id/layoutStep4"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Prioritize invoices, certificates, and PDFs"
+                    android:textSize="16sp"
+                    android:textColor="@color/text_black" />
+
+                <Switch
+                    android:id="@+id/switchDocuments"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true" />
+
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ===================== STEP 5: Frequency ===================== -->
+        <LinearLayout
+            android:id="@+id/layoutStep5"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <RadioGroup
+                android:id="@+id/radioGroupFrequency"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <RadioButton
+                    android:id="@+id/radioFreqDaily"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Daily — backup very recent files"
+                    android:layout_marginBottom="12dp"
+                    android:padding="8dp" />
+
+                <RadioButton
+                    android:id="@+id/radioFreqWeekly"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Weekly — backup when I have time"
+                    android:checked="true"
+                    android:layout_marginBottom="12dp"
+                    android:padding="8dp" />
+
+                <RadioButton
+                    android:id="@+id/radioFreqMonthly"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Monthly — I backup occasionally"
+                    android:padding="8dp" />
+
+            </RadioGroup>
+        </LinearLayout>
+
+        <!-- Spacer -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <!-- Next Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOnboardingNext"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="32dp"
+            android:text="Next"
+            android:textSize="16sp"
+            style="@style/Widget.MaterialComponents.Button" />
+
+    </LinearLayout>
+
+</ScrollView>

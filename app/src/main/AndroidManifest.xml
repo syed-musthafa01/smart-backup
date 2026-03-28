@@ -44,6 +44,12 @@
             android:exported="false"
             android:label="@string/title_settings" />
 
+        <!-- 🔹 ONBOARDING (shown on first launch only) -->
+        <activity
+            android:name=".ui.OnboardingActivity"
+            android:exported="false"
+            android:label="Setup" />
+
         <!-- 🔹 FILE MANAGER = SECONDARY ACTIVITY -->
         <activity
             android:name=".ui.MainActivity"

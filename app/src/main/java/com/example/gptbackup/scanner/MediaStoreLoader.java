@@ -1,6 +1,7 @@
 package com.example.gptbackup.scanner;
 
 import android.content.ContentResolver;
+import android.content.ContentUris;
 import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
@@ -39,10 +40,8 @@ public class MediaStoreLoader {
 
             while (cursor.moveToNext()) {
                 long id = cursor.getLong(idCol);
-                Uri contentUri = Uri.withAppendedPath(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        String.valueOf(id)
-                );
+                Uri contentUri = ContentUris.withAppendedId(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
 
                 FileModel f = new FileModel(
                         cursor.getString(nameCol),
@@ -54,6 +53,7 @@ public class MediaStoreLoader {
                 f.setLastModified(cursor.getLong(dateCol) * 1000);
                 f.setContentUri(contentUri);
                 f.setFromMediaStore(true);
+                f.setMediaStoreId(id);
 
                 list.add(f);
             }
@@ -87,10 +87,8 @@ public class MediaStoreLoader {
 
             while (cursor.moveToNext()) {
                 long id = cursor.getLong(idCol);
-                Uri contentUri = Uri.withAppendedPath(
-                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                        String.valueOf(id)
-                );
+                Uri contentUri = ContentUris.withAppendedId(
+                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id);
 
                 FileModel f = new FileModel(
                         cursor.getString(nameCol),
@@ -101,6 +99,7 @@ public class MediaStoreLoader {
                 f.setLastModified(cursor.getLong(dateCol) * 1000);
                 f.setContentUri(contentUri);
                 f.setFromMediaStore(true);
+                f.setMediaStoreId(id);
                 list.add(f);
             }
             cursor.close();

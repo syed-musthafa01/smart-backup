@@ -27,6 +27,7 @@ import com.example.gptbackup.adapter.FileAdapter;
 import com.example.gptbackup.backup.UploadManager;
 import com.example.gptbackup.model.FileModel;
 import com.example.gptbackup.model.UploadState;
+import com.example.gptbackup.backup.GoogleDriveSyncManager;
 import com.example.gptbackup.scanner.FileScanner;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
@@ -57,6 +58,8 @@ public class MainActivity extends AppCompatActivity
     private GoogleSignInClient googleSignInClient;
     private GoogleSignInAccount currentAccount;
     private UploadManager uploadManager;
+    private GoogleDriveSyncManager syncManager;
+    private boolean isSyncing = false;
 
     private TextView txtGlobalStatus, txtAccountEmail;
     private ProgressBar progressGlobal;
@@ -92,6 +95,8 @@ public class MainActivity extends AppCompatActivity
         imgAccount.setOnClickListener(v -> openAccountChooser());
         btnChangeAccount.setOnClickListener(v -> openAccountChooser());
 
+        com.example.gptbackup.backup.AutoBackupTriggerController.getInstance(this).applySettings();
+
         if (!hasFullStorageAccess()) {
             requestFullStorageAccess();
         }
@@ -108,7 +113,9 @@ public class MainActivity extends AppCompatActivity
                     loadFolder(currentFolder.getParentFile());
                 } else {
                     if (doubleBackToExitPressedOnce) {
-                        startActivity(new Intent(MainActivity.this, SmartBackupActivity.class));
+                        Intent intent = new Intent(MainActivity.this, SmartBackupActivity.class);
+                        intent.setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                        startActivity(intent);
                         return;
                     }
 
@@ -192,6 +199,28 @@ public class MainActivity extends AppCompatActivity
                 imgAccount.setImageResource(R.drawable.ic_launcher_foreground);
                 imgAccount.setImageTintList(android.content.res.ColorStateList.valueOf(getResources().getColor(R.color.text_black)));
             }
+            
+            // Trigger Drive Sync
+            syncManager = new GoogleDriveSyncManager(this, account);
+            isSyncing = true;
+            txtGlobalStatus.setText("Syncing metadata...");
+            syncManager.startSync(new GoogleDriveSyncManager.SyncCallback() {
+                @Override
+                public void onSuccess() {
+                    runOnUiThread(() -> {
+                        isSyncing = false;
+                        txtGlobalStatus.setText("Sync complete.");
+                    });
+                }
+                @Override
+                public void onError(Exception e) {
+                    runOnUiThread(() -> {
+                        isSyncing = false;
+                        txtGlobalStatus.setText("Sync failed.");
+                        Toast.makeText(MainActivity.this, "Drive Sync Failed", Toast.LENGTH_SHORT).show();
+                    });
+                }
+            });
         }
     }
 
@@ -272,11 +301,24 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void startBackupAfterLogin(GoogleSignInAccount account) {
+        if (isSyncing) {
+            Toast.makeText(this, "Please wait for sync to finish", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (syncManager == null) {
+            syncManager = new GoogleDriveSyncManager(this, account);
+            Toast.makeText(this, "Syncing metadata, please try again in a moment", Toast.LENGTH_SHORT).show();
+            // Optional: immediately trigger sync or assume it will run.
+            return;
+        }
+
         uploadManager = new UploadManager(
                 this,
                 account,
                 fileAdapter.getSelectedFiles(),
-                this);
+                this,
+                syncManager);
 
         uploadManager.start();
         progressGlobal.setVisibility(ProgressBar.VISIBLE);

@@ -98,10 +98,17 @@ public class FileScanner {
 
     private String getFileType(String name) {
         name = name.toLowerCase();
-        if (name.endsWith(".jpg") || name.endsWith(".png")) return "image";
-        if (name.endsWith(".mp4") || name.endsWith(".mkv")) return "video";
-        if (name.endsWith(".mp3") || name.endsWith(".wav")) return "audio";
-        if (name.endsWith(".pdf") || name.endsWith(".doc") || name.endsWith(".docx"))
+        if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png"))
+            return "image";
+        if (name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".mov"))
+            return "video";
+        if (name.endsWith(".mp3") || name.endsWith(".wav") || name.endsWith(".m4a")
+                || name.endsWith(".aac") || name.endsWith(".ogg") || name.endsWith(".flac"))
+            return "audio";
+        if (name.endsWith(".pdf") || name.endsWith(".doc") || name.endsWith(".docx")
+                || name.endsWith(".xls") || name.endsWith(".xlsx")
+                || name.endsWith(".ppt") || name.endsWith(".pptx")
+                || name.endsWith(".txt") || name.endsWith(".csv"))
             return "document";
         return "other";
     }

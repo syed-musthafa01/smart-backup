@@ -4,31 +4,27 @@ import android.content.Context;
 import android.util.Log;
 
 import com.example.gptbackup.model.FileModel;
-import com.google.android.gms.auth.GoogleAuthUtil;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential;
+import com.google.api.client.googleapis.media.MediaHttpUploader;
+import com.google.api.client.googleapis.media.MediaHttpUploaderProgressListener;
+import com.google.api.client.http.FileContent;
+import com.google.api.client.http.InputStreamContent;
+import com.google.api.client.http.javanet.NetHttpTransport;
+import com.google.api.client.json.gson.GsonFactory;
+import com.google.api.services.drive.Drive;
+import com.google.api.services.drive.DriveScopes;
+import com.google.api.services.drive.model.File;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.FileInputStream;
 import java.io.InputStream;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import okhttp3.MediaType;
-import okhttp3.MultipartBody;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-import okio.BufferedSink;
-import okio.Okio;
-import okio.Source;
 
 public class DriveRestUploader {
 
     private static final String TAG = "DriveRestUploader";
-    private static final String DRIVE_SCOPE =
-            "oauth2:https://www.googleapis.com/auth/drive.file";
 
     public interface ProgressCallback {
         void onProgress(int progress);
@@ -40,100 +36,113 @@ public class DriveRestUploader {
         void cancel();
     }
 
-    public static UploadHandle uploadSingleFile(
+    public static UploadHandle uploadToDrive(
             Context context,
             GoogleSignInAccount account,
             FileModel fileModel,
-            ProgressCallback callback
+            Map<String, String> folderIds,
+            ProgressCallback callback,
+            AtomicBoolean globalPaused,
+            AtomicBoolean globalCanceled
     ) {
 
-        AtomicBoolean canceled = new AtomicBoolean(false);
-        AtomicBoolean paused = fileModel.getPausedFlag();
-        Object pauseLock = new Object();
+        AtomicBoolean localCanceled = new AtomicBoolean(false);
+        AtomicBoolean localPaused = fileModel.getPausedFlag();
 
         new Thread(() -> {
             try {
-                String accessToken = GoogleAuthUtil.getToken(
-                        context,
-                        account.getAccount(),
-                        DRIVE_SCOPE
-                );
+                GoogleAccountCredential credential = GoogleAccountCredential.usingOAuth2(
+                        context, Collections.singleton(DriveScopes.DRIVE_FILE));
+                credential.setSelectedAccount(account.getAccount());
 
-                OkHttpClient client = new OkHttpClient();
+                Drive driveService = new Drive.Builder(
+                        new NetHttpTransport(),
+                        new GsonFactory(),
+                        credential)
+                        .setApplicationName("SmartMobileBackup")
+                        .build();
 
-                Map<String, String> folders =
-                        ensureFolderStructure(client, accessToken);
-
-                File localFile = null;
                 String fileName;
                 long fileSize;
+                InputStreamContent mediaContent = null;
+                FileContent fileContent = null;
 
                 if (fileModel.getPath() != null && !fileModel.getPath().isEmpty()) {
-                    localFile = new File(fileModel.getPath());
+                    java.io.File localFile = new java.io.File(fileModel.getPath());
                     fileName = localFile.getName();
                     fileSize = localFile.length();
+                    fileContent = new FileContent("application/octet-stream", localFile);
                 } else if (fileModel.isFromMediaStore()) {
                     fileName = fileModel.getName();
                     fileSize = fileModel.getSize();
+                    InputStream inputStream = context.getContentResolver().openInputStream(fileModel.getContentUri());
+                    if (inputStream != null) {
+                        mediaContent = new InputStreamContent("application/octet-stream", inputStream);
+                        mediaContent.setLength(fileSize);
+                    } else {
+                        throw new Exception("Unable to open input stream");
+                    }
                 } else {
                     throw new Exception("Invalid file source");
                 }
 
-                String parentId = resolveParentId(folders, fileModel);
+                String parentId = resolveParentId(folderIds, fileModel);
 
-                String metadataJson =
-                        "{ \"name\": \"" + fileName + "\", " +
-                                "\"mimeType\": \"application/octet-stream\", " +
-                                "\"parents\": [\"" + parentId + "\"] }";
+                File fileMetadata = new File();
+                fileMetadata.setName(fileName);
+                fileMetadata.setParents(Collections.singletonList(parentId));
 
-                RequestBody metadata = RequestBody.create(
-                        metadataJson,
-                        MediaType.parse("application/json; charset=utf-8")
-                );
-
-                RequestBody fileBody;
-
-                if (localFile != null) {
-                    fileBody = new ProgressRequestBody(
-                            localFile,
-                            MediaType.parse("application/octet-stream"),
-                            callback,
-                            canceled,
-                            paused
-                    );
+                Drive.Files.Create createRequest;
+                if (fileContent != null) {
+                    createRequest = driveService.files().create(fileMetadata, fileContent);
                 } else {
-                    fileBody = new UriProgressRequestBody(
-                            context,
-                            fileModel,
-                            MediaType.parse("application/octet-stream"),
-                            callback,
-                            canceled,
-                            paused
-                    );
+                    createRequest = driveService.files().create(fileMetadata, mediaContent);
                 }
 
-                RequestBody requestBody = new MultipartBody.Builder()
-                        .setType(MultipartBody.FORM)
-                        .addFormDataPart("metadata", null, metadata)
-                        .addFormDataPart("file", fileName, fileBody)
-                        .build();
+                MediaHttpUploader uploader = createRequest.getMediaHttpUploader();
+                uploader.setDirectUploadEnabled(false); // Enable resumable upload
+                uploader.setChunkSize(MediaHttpUploader.MINIMUM_CHUNK_SIZE);
 
-                Request request = new Request.Builder()
-                        .url("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
-                        .addHeader("Authorization", "Bearer " + accessToken)
-                        .post(requestBody)
-                        .build();
+                uploader.setProgressListener(new MediaHttpUploaderProgressListener() {
+                    @Override
+                    public void progressChanged(MediaHttpUploader uploader) throws java.io.IOException {
+                        if (localCanceled.get() || globalCanceled.get()) {
+                            // Can't easily cancel the Google API client mid-chunk without throwing exception,
+                            // but we can just let it finish the chunk and not report.
+                            // However, we just stop tracking here.
+                        }
 
-                Response response = client.newCall(request).execute();
+                        while ((localPaused.get() || globalPaused.get()) && !localCanceled.get() && !globalCanceled.get()) {
+                            try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+                        }
 
-                if (response.isSuccessful()) {
-                    Log.d(TAG, "Uploaded: " + fileName);
-                } else {
-                    Log.e(TAG, "Upload failed: " + response.code());
+                        switch (uploader.getUploadState()) {
+                            case INITIATION_STARTED:
+                            case INITIATION_COMPLETE:
+                                callback.onProgress(0);
+                                break;
+                            case MEDIA_IN_PROGRESS:
+                                int progress = (int) (uploader.getProgress() * 100);
+                                callback.onProgress(progress);
+                                break;
+                            case MEDIA_COMPLETE:
+                                callback.onProgress(100);
+                                break;
+                            case NOT_STARTED:
+                                break;
+                        }
+                    }
+                });
+
+                File uploadedFile = createRequest.setFields("id").execute();
+                
+                if (uploadedFile != null && uploadedFile.getId() != null) {
+                    fileModel.setDriveFileId(uploadedFile.getId());
+                    Log.d(TAG, "Uploaded: " + fileName + " with ID: " + uploadedFile.getId());
                 }
 
             } catch (Exception e) {
-                if (canceled.get()) {
+                if (localCanceled.get() || globalCanceled.get()) {
                     Log.d(TAG, "Upload canceled by user");
                 } else {
                     Log.e(TAG, "Upload error", e);
@@ -143,245 +152,19 @@ public class DriveRestUploader {
 
         return new UploadHandle() {
             @Override
-            public void pause() {
-                paused.set(true);
-            }
-
+            public void pause() { localPaused.set(true); }
             @Override
-            public void resume() {
-                paused.set(false);
-            }
-
+            public void resume() { localPaused.set(false); }
             @Override
             public void cancel() {
-                canceled.set(true);
+                localCanceled.set(true);
                 resume();
             }
         };
     }
 
-    // ================= FILE REQUEST BODY =================
-
-    private static class ProgressRequestBody extends RequestBody {
-
-        private final File file;
-        private final MediaType contentType;
-        private final ProgressCallback callback;
-        private final AtomicBoolean canceled;
-        private final AtomicBoolean paused;
-
-        ProgressRequestBody(File file,
-                            MediaType contentType,
-                            ProgressCallback callback,
-                            AtomicBoolean canceled,
-                            AtomicBoolean paused) {
-
-            this.file = file;
-            this.contentType = contentType;
-            this.callback = callback;
-            this.canceled = canceled;
-            this.paused = paused;
-        }
-
-        @Override
-        public MediaType contentType() {
-            return contentType;
-        }
-
-        @Override
-        public long contentLength() {
-            return file.length();
-        }
-
-        @Override
-        public void writeTo(BufferedSink sink) throws IOException {
-
-            long length = contentLength();
-            long uploaded = 0;
-
-            try (Source source = Okio.source(file)) {
-
-                long read;
-                while ((read = source.read(sink.getBuffer(), 8 * 1024)) != -1) {
-
-                    if (canceled.get()) {
-                        throw new IOException("Upload canceled");
-                    }
-
-                    while (paused.get()) {
-                        try { Thread.sleep(200); } catch (InterruptedException ignored) {}
-                    }
-
-                    uploaded += read;
-                    sink.flush();
-
-                    if (callback != null && length > 0) {
-                        int progress = (int) ((uploaded * 100) / length);
-                        callback.onProgress(progress);
-                    }
-                }
-            }
-        }
-    }
-
-    // ================= URI REQUEST BODY (MediaStore) =================
-
-    private static class UriProgressRequestBody extends RequestBody {
-
-        private final Context context;
-        private final FileModel fileModel;
-        private final MediaType contentType;
-        private final ProgressCallback callback;
-        private final AtomicBoolean canceled;
-        private final AtomicBoolean paused;
-
-        UriProgressRequestBody(Context context,
-                               FileModel fileModel,
-                               MediaType contentType,
-                               ProgressCallback callback,
-                               AtomicBoolean canceled,
-                               AtomicBoolean paused) {
-
-            this.context = context;
-            this.fileModel = fileModel;
-            this.contentType = contentType;
-            this.callback = callback;
-            this.canceled = canceled;
-            this.paused = paused;
-        }
-
-        @Override
-        public MediaType contentType() {
-            return contentType;
-        }
-
-        @Override
-        public long contentLength() {
-            return fileModel.getSize();
-        }
-
-        @Override
-        public void writeTo(BufferedSink sink) throws IOException {
-
-            long length = contentLength();
-            long uploaded = 0;
-
-            InputStream inputStream =
-                    context.getContentResolver()
-                            .openInputStream(fileModel.getContentUri());
-
-            if (inputStream == null) {
-                throw new IOException("Unable to open input stream");
-            }
-
-            try (Source source = Okio.source(inputStream)) {
-
-                long read;
-                while ((read = source.read(sink.getBuffer(), 8 * 1024)) != -1) {
-
-                    if (canceled.get()) {
-                        throw new IOException("Upload canceled");
-                    }
-
-                    while (paused.get()) {
-                        try { Thread.sleep(200); } catch (InterruptedException ignored) {}
-                    }
-
-                    uploaded += read;
-                    sink.flush();
-
-                    if (callback != null && length > 0) {
-                        int progress = (int) ((uploaded * 100) / length);
-                        callback.onProgress(progress);
-                    }
-                }
-            }
-        }
-    }
-
-    // ================= FOLDER LOGIC (UNCHANGED) =================
-
-    private static Map<String, String> ensureFolderStructure(
-            OkHttpClient client,
-            String accessToken
-    ) throws IOException {
-
-        Map<String, String> ids = new HashMap<>();
-
-        String rootId = createFolderIfNotExists(
-                client, accessToken, "SmartAIBackup", null);
-        ids.put("root", rootId);
-
-        ids.put("Images", createFolderIfNotExists(client, accessToken, "Images", rootId));
-        ids.put("Videos", createFolderIfNotExists(client, accessToken, "Videos", rootId));
-        ids.put("Documents", createFolderIfNotExists(client, accessToken, "Documents", rootId));
-        ids.put("Audio", createFolderIfNotExists(client, accessToken, "Audio", rootId));
-        ids.put("AI_Priority", createFolderIfNotExists(client, accessToken, "AI_Priority", rootId));
-
-        return ids;
-    }
-
-    private static String createFolderIfNotExists(
-            OkHttpClient client,
-            String accessToken,
-            String name,
-            String parentId
-    ) throws IOException {
-
-        String query = "mimeType='application/vnd.google-apps.folder' and name='" + name + "'";
-        if (parentId != null) {
-            query += " and '" + parentId + "' in parents";
-        }
-
-        Request listRequest = new Request.Builder()
-                .url("https://www.googleapis.com/drive/v3/files?q=" + query.replace(" ", "%20"))
-                .addHeader("Authorization", "Bearer " + accessToken)
-                .get()
-                .build();
-
-        Response listResponse = client.newCall(listRequest).execute();
-        if (listResponse.isSuccessful() && listResponse.body() != null) {
-            String body = listResponse.body().string();
-            int idIndex = body.indexOf("\"id\":");
-            if (idIndex != -1) {
-                int start = body.indexOf("\"", idIndex + 5) + 1;
-                int end = body.indexOf("\"", start);
-                return body.substring(start, end);
-            }
-        }
-
-        String parentPart = parentId == null ? "" :
-                ", \"parents\": [\"" + parentId + "\"]";
-
-        String json = "{ \"name\": \"" + name + "\", " +
-                "\"mimeType\": \"application/vnd.google-apps.folder\"" +
-                parentPart + " }";
-
-        RequestBody body = RequestBody.create(
-                json,
-                MediaType.parse("application/json; charset=utf-8")
-        );
-
-        Request createReq = new Request.Builder()
-                .url("https://www.googleapis.com/drive/v3/files")
-                .addHeader("Authorization", "Bearer " + accessToken)
-                .post(body)
-                .build();
-
-        Response createResp = client.newCall(createReq).execute();
-        String respBody = createResp.body().string();
-
-        int idIndex = respBody.indexOf("\"id\":");
-        int start = respBody.indexOf("\"", idIndex + 5) + 1;
-        int end = respBody.indexOf("\"", start);
-        return respBody.substring(start, end);
-    }
-
-    private static String resolveParentId(
-            Map<String, String> folders,
-            FileModel fileModel
-    ) {
-        if (fileModel.getPriority() == 2) {
+    private static String resolveParentId(Map<String, String> folders, FileModel fileModel) {
+        if (fileModel.getPriority() >= 70) {
             return folders.get("AI_Priority");
         }
         String type = fileModel.getType();

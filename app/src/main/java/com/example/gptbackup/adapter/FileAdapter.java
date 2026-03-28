@@ -64,6 +64,9 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
 
         /* ================= PREVIEW ================= */
 
+        // Clear previous image to prevent stale thumbnails on recycled views
+        holder.imgPreview.setImageDrawable(null);
+
         if (file.isDirectory()) {
             holder.imgPreview.setImageResource(R.drawable.ic_folder);
         } else {

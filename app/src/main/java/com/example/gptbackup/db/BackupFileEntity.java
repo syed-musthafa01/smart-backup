@@ -15,4 +15,7 @@ public class BackupFileEntity {
     public long lastUploadedTime;
     public long uploadedFileSize;
     public int priority;
+
+    public String backupStatus;  // e.g., BACKED_UP, NOT_BACKED_UP, MISSING
+    public String checksum;      // MD5 hash or similar
 }

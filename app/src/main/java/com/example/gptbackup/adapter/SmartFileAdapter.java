@@ -45,6 +45,7 @@ public class SmartFileAdapter
 
     public SmartFileAdapter(List<FileModel> files) {
         this.files = files;
+        setHasStableIds(true);
     }
 
     public void setSelectionListener(SelectionListener listener) {
@@ -102,6 +103,9 @@ public class SmartFileAdapter
         UploadState state = file.getUploadState();
         holder.txtStateTag.setText(state != null ? state.name() : "IDLE");
 
+        // Clear previous image to prevent stale thumbnails on recycled views
+        holder.imgPreview.setImageDrawable(null);
+
         if (!file.isDirectory() && (file.isImage() || file.isVideo())) {
             Glide.with(context)
                     .load(file.isFromMediaStore() ? file.getContentUri() : realFile)
@@ -122,9 +126,12 @@ public class SmartFileAdapter
         boolean isBusy = backupRunning && file.isSelected() && (state == UploadState.UPLOADING || state == UploadState.PAUSED);
         
         holder.itemView.setOnLongClickListener(v -> {
+            int currentPos = holder.getAdapterPosition();
+            if (currentPos == RecyclerView.NO_POSITION) return true;
+            FileModel clickedFile = files.get(currentPos);
             if (!isBusy) {
-                file.setSelected(true);
-                notifyItemChanged(position);
+                clickedFile.setSelected(true);
+                notifyItemChanged(currentPos);
                 notifySelectionChanged();
             }
             return true;
@@ -153,31 +160,47 @@ public class SmartFileAdapter
             holder.progressContainer.setVisibility(View.GONE);
         }
 
-        holder.btnRowPause.setOnClickListener(v -> { file.pauseByUser(); notifyItemChanged(position); });
-        holder.btnRowResume.setOnClickListener(v -> { file.resumeByUser(); notifyItemChanged(position); });
+        holder.btnRowPause.setOnClickListener(v -> { 
+            int pos = holder.getAdapterPosition();
+            if (pos != RecyclerView.NO_POSITION) {
+                files.get(pos).pauseByUser(); 
+                notifyItemChanged(pos); 
+            }
+        });
+        holder.btnRowResume.setOnClickListener(v -> { 
+            int pos = holder.getAdapterPosition();
+            if (pos != RecyclerView.NO_POSITION) {
+                files.get(pos).resumeByUser(); 
+                notifyItemChanged(pos); 
+            }
+        });
         holder.btnRowCancel.setOnClickListener(v -> { 
-            file.cancelByUser(); 
-            file.setSelected(false);
-            notifyItemChanged(position); 
-            notifySelectionChanged();
+            int pos = holder.getAdapterPosition();
+            if (pos != RecyclerView.NO_POSITION) {
+                FileModel f = files.get(pos);
+                f.cancelByUser(); 
+                f.setSelected(false);
+                notifyItemChanged(pos); 
+                notifySelectionChanged();
+            }
         });
 
         holder.itemView.setOnClickListener(v -> {
-            if (file.isSelected() && !isBusy) {
-                file.setSelected(false);
-                notifyItemChanged(position);
+            int currentPos = holder.getAdapterPosition();
+            if (currentPos == RecyclerView.NO_POSITION) return;
+            FileModel clickedFile = files.get(currentPos);
+            
+            if (clickedFile.isSelected() && !isBusy) {
+                clickedFile.setSelected(false);
+                notifyItemChanged(currentPos);
                 notifySelectionChanged();
             } else if (!isBusy) {
-                // If any other file is selected, maybe we want to select this one too?
-                // But user requested: "hide the checkbox ... when its show only long press"
-                // This implies single click should still open if nothing is selected.
-                // If something is selected, usually we toggle.
                 if (getSelectedCount() > 0) {
-                    file.setSelected(true);
-                    notifyItemChanged(position);
+                    clickedFile.setSelected(true);
+                    notifyItemChanged(currentPos);
                     notifySelectionChanged();
                 } else {
-                    openFile(context, file);
+                    openFile(context, clickedFile);
                 }
             }
         });
@@ -230,6 +253,14 @@ public class SmartFileAdapter
 
     @Override
     public int getItemCount() { return files.size(); }
+
+    @Override
+    public long getItemId(int position) {
+        FileModel f = files.get(position);
+        if (f.getMediaStoreId() > 0) return f.getMediaStoreId();
+        String path = f.getPath();
+        return path != null ? path.hashCode() : position;
+    }
 
     private String formatSize(long bytes) {
         if (bytes <= 0) return "0 B";

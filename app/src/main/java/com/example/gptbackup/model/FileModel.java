@@ -21,6 +21,8 @@ public class FileModel {
 
     private boolean selected = false; // ✅ Changed to false as requested
     private int priority = -1;
+    private String aiPriorityLabel = "";
+    private long mediaStoreId = -1;
 
     private UploadState uploadState = UploadState.IDLE;
     private int uploadProgress = 0;
@@ -63,7 +65,7 @@ public class FileModel {
 
     public boolean isDocument() {
         return "document".equals(type)
-                && hasExtension(
+                || hasExtension(
                 "pdf", "doc", "docx",
                 "xls", "xlsx",
                 "ppt", "pptx",
@@ -106,6 +108,11 @@ public class FileModel {
     public int getPriority() { return priority; }
     public void setPriority(int priority) {
         this.priority = priority;
+    }
+
+    public String getAiPriorityLabel() { return aiPriorityLabel; }
+    public void setAiPriorityLabel(String label) {
+        this.aiPriorityLabel = label != null ? label : "";
     }
 
     public UploadState getUploadState() { return uploadState; }
@@ -180,6 +187,11 @@ public class FileModel {
     }
     public void setFromMediaStore(boolean fromMediaStore) {
         this.fromMediaStore = fromMediaStore;
+    }
+
+    public long getMediaStoreId() { return mediaStoreId; }
+    public void setMediaStoreId(long mediaStoreId) {
+        this.mediaStoreId = mediaStoreId;
     }
     // ---- Setters / Controls ----
 

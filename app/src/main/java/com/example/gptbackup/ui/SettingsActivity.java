@@ -90,4 +90,10 @@ public class SettingsActivity extends AppCompatActivity {
         binding.switchSmartOptimization.setOnCheckedChangeListener((v, checked) -> settingsManager.setEnableSmartOptimization(checked));
         binding.switchUnlimitedConcurrent.setOnCheckedChangeListener((v, checked) -> settingsManager.setUnlimitedConcurrentUploads(checked));
     }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        com.example.gptbackup.backup.AutoBackupTriggerController.getInstance(this).applySettings();
+    }
 }
